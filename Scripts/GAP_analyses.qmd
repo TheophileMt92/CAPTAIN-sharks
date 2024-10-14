@@ -1,0 +1,1241 @@
+---
+title: "GAP analyses"
+author: "Théophile L. Mouton"
+date: "October 9, 2024"
+format:
+  html:
+    toc: true
+    toc-location: right
+    css: custom.css
+    output-file: "GAP_analyses.html"
+    self-contained: true
+    code-fold: true
+    code-tools: true
+editor: visual
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+# Load the data
+
+Load the grid and the MPA raster layers 
+
+```{r}
+# Load necessary libraries
+library(raster)
+library(here)
+library(sp)
+library(dplyr)
+library(tidyr)
+
+# Load the data ----
+load(here::here("Data", "GAP analyses", "puvsp_marine.Rdata"))
+
+# Load the raster layers
+mpa_ALL <- raster::raster(here::here("Data", "GAP analyses", "mpa_ALL_binary.tif"))
+mpa_NT <- raster::raster(here::here("Data", "GAP analyses", "mpa_NT_binary.tif"))
+
+```
+
+# GAP analyses
+
+GAP analyses of shark and ray range overlaps with Marine Protected Areas 
+```{r}
+# Convert species dataframe to spatial points
+species_points <- SpatialPointsDataFrame(coords = puvsp_marine[, c("lon", "lat")], 
+                                         data = puvsp_marine, 
+                                         proj4string = CRS(projection(mpa_ALL)))
+
+# Extract MPA values for each species point
+mpa_ALL_values <- raster::extract(mpa_ALL, species_points)
+mpa_NT_values <- raster::extract(mpa_NT, species_points)
+
+# Add MPA values to the species dataframe
+puvsp_marine$mpa_ALL_present <- mpa_ALL_values
+puvsp_marine$mpa_NT_present <- mpa_NT_values
+
+# Function to calculate percentage of range in MPA
+calculate_mpa_percentage <- function(species_column, mpa_column) {
+  species_presence <- species_column == 1  # Assuming 1 indicates species presence
+  total_range <- sum(species_presence, na.rm = TRUE)
+  range_in_mpa <- sum(species_presence & mpa_column == 1, na.rm = TRUE)
+  
+  if (total_range == 0) {
+    return(NA)  # Return NA if the species is not present anywhere
+  }
+  
+  percentage <- (range_in_mpa / total_range) * 100
+  return(percentage)
+}
+
+# Apply function to all species columns for both MPA types
+species_columns <- 4:(ncol(puvsp_marine) - 2)  # Assuming species columns start at 4
+mpa_ALL_percentages <- sapply(puvsp_marine[, species_columns], 
+                              function(x) calculate_mpa_percentage(x, puvsp_marine$mpa_ALL_present))
+mpa_NT_percentages <- sapply(puvsp_marine[, species_columns], 
+                             function(x) calculate_mpa_percentage(x, puvsp_marine$mpa_NT_present))
+
+# Create a dataframe with results
+results <- data.frame(
+  species = names(mpa_ALL_percentages),
+  percentage_in_ALL_MPA = mpa_ALL_percentages,
+  percentage_in_NT_MPA = mpa_NT_percentages
+)
+
+# Remove any NA results
+results <- results[!is.na(results$percentage_in_ALL_MPA) & !is.na(results$percentage_in_NT_MPA), ]
+
+# Sort results by percentage in ALL MPAs (descending)
+results <- results[order(-results$percentage_in_ALL_MPA), ]
+
+# Display top 10 species
+#print(head(results, 10))
+
+# Summary statistics
+cat("\nSummary Statistics for ALL MPAs:\n")
+print(summary(results$percentage_in_ALL_MPA))
+
+cat("\nSummary Statistics for No-Take MPAs:\n")
+print(summary(results$percentage_in_NT_MPA))
+
+# Save results to CSV
+#write.csv(results, "species_mpa_coverage_ALL_and_NT.csv", row.names = FALSE)
+```
+
+# Null model of MPA placement
+
+Null model of MPA placement and overlaps with the range of sharks and rays 
+```{r}
+library(raster)
+library(here)
+library(sp)
+
+# Load the bathymetry raster
+Bathy <- raster(here::here("Data", "bathymetry-0.1deg-adjusted.tif"))
+
+# Create marine mask from bathymetry (areas < 0)
+marine_mask <- Bathy < 0
+
+# Resample marine mask to match MPA raster resolution
+marine_mask_resampled <- raster::resample(marine_mask, mpa_ALL, method = "ngb")
+
+# Ensure marine_mask_resampled is binary (0 or 1)
+marine_mask_resampled <- raster::reclassify(marine_mask_resampled, c(-Inf, 0.5, 0, 0.5, Inf, 1))
+
+# Diagnostic information
+#print(paste("marine_mask_resampled class:", class(marine_mask_resampled)))
+#print(paste("marine_mask_resampled unique values:", paste(unique(raster::values(marine_mask_resampled)), collapse = ", ")))
+#print(paste("mpa_ALL class:", class(mpa_ALL)))
+#print(paste("mpa_ALL unique values:", paste(unique(raster::values(mpa_ALL)), collapse = ", ")))
+
+# Update the create_random_mpa function with error handling
+create_random_mpa <- function(template_raster, marine_mask) {
+  # Ensure template_raster is binary
+  template_raster <- raster::reclassify(template_raster, c(-Inf, 0.5, 0, 0.5, Inf, 1))
+  
+  # Count original marine MPA cells
+  original_mpa_cells <- try(sum(raster::values(template_raster) == 1 & raster::values(marine_mask) == 1, na.rm = TRUE))
+  if (inherits(original_mpa_cells, "try-error")) {
+    stop("Error in counting MPA cells. Check if template_raster and marine_mask have the same extent and resolution.")
+  }
+  
+  # Get all marine cells
+  marine_cells <- which(raster::values(marine_mask) == 1)
+  total_marine_cells <- length(marine_cells)
+  
+  if (original_mpa_cells > total_marine_cells) {
+    warning("More MPA cells than marine cells. Adjusting MPA cell count.")
+    original_mpa_cells <- total_marine_cells
+  }
+  
+  # Randomly select marine cells to be MPAs
+  mpa_cells <- sample(marine_cells, size = original_mpa_cells, replace = FALSE)
+  
+  # Create new raster with random MPAs
+  random_raster <- template_raster
+  random_raster[] <- NA
+  random_raster[marine_cells] <- 0
+  random_raster[mpa_cells] <- 1
+  
+  return(random_raster)
+}
+
+# Calculate MPA percentage function
+calculate_mpa_percentage <- function(species_values, mpa_values) {
+  total_cells <- sum(!is.na(species_values))
+  mpa_cells <- sum(mpa_values == 1 & !is.na(species_values), na.rm = TRUE)
+  percentage <- (mpa_cells / total_cells) * 100
+  return(percentage)
+}
+
+# Main analysis function
+run_random_mpa_analysis <- function(species_data, mpa_raster, marine_mask, n_iterations = 100) {
+  # Convert species dataframe to spatial points
+  species_points <- sp::SpatialPointsDataFrame(coords = species_data[, c("lon", "lat")], 
+                                               data = species_data, 
+                                               proj4string = sp::CRS(raster::projection(mpa_raster)))
+  
+  # Prepare results storage
+  species_columns <- 4:(ncol(species_data) - 1)  # Adjust if needed
+  all_results <- matrix(nrow = length(species_columns), ncol = n_iterations)
+  rownames(all_results) <- names(species_data)[species_columns]
+  
+  for (i in 1:n_iterations) {
+    # Create random MPA placement
+    random_mpa <- create_random_mpa(mpa_raster, marine_mask)
+    
+    # Extract MPA values for each species point
+    random_mpa_values <- raster::extract(random_mpa, species_points)
+    
+    # Calculate percentages for all species
+    random_percentages <- sapply(species_data[, species_columns], 
+                                 function(x) calculate_mpa_percentage(x, random_mpa_values))
+    
+    all_results[, i] <- random_percentages
+  }
+  
+  # Calculate mean and standard deviation for each species
+  mean_percentages <- rowMeans(all_results, na.rm = TRUE)
+  sd_percentages <- apply(all_results, 1, sd, na.rm = TRUE)
+  
+  results <- data.frame(
+    species = rownames(all_results),
+    mean_percentage = mean_percentages,
+    sd_percentage = sd_percentages
+  )
+  
+  return(results)
+}
+
+# Run the analysis with error handling
+tryCatch({
+  random_results_ALL <- run_random_mpa_analysis(puvsp_marine, mpa_ALL, marine_mask_resampled, n_iterations = 100)
+  print("Analysis for ALL MPAs completed successfully.")
+}, error = function(e) {
+  print(paste("Error in ALL MPAs analysis:", e$message))
+})
+
+tryCatch({
+  random_results_NT <- run_random_mpa_analysis(puvsp_marine, mpa_NT, marine_mask_resampled, n_iterations = 100)
+  print("Analysis for No-Take MPAs completed successfully.")
+}, error = function(e) {
+  print(paste("Error in No-Take MPAs analysis:", e$message))
+})
+
+# Function to process results
+process_results <- function(results, mpa_type) {
+  # Sort results by mean_percentage in descending order
+  results <- results[order(-results$mean_percentage), ]
+  
+  # Calculate summary statistics
+  summary_stats <- summary(results$mean_percentage)
+  
+  # Write results to CSV
+  write.csv(results, paste0("species_random_", mpa_type, "_coverage.csv"), row.names = FALSE)
+  
+  # Return a list containing the processed data
+  return(list(
+    top_10 = head(results, 10),
+    summary_stats = summary_stats,
+    all_results = results
+  ))
+}
+
+# Process results for both MPA types
+processed_results <- list()
+
+if (exists("random_results_ALL")) {
+  processed_results[["ALL MPAs"]] <- process_results(random_results_ALL, "ALL MPAs")
+}
+
+if (exists("random_results_NT")) {
+  processed_results[["No-take MPAs"]] <- process_results(random_results_NT, "No-take MPAs")
+}
+```
+
+**Important note:** This NULL model randomly distributes protected grid cells at a 0.5-degree resolution. However, it does not preserve MPA shape and size and does not account for jurisdictions in its random placement. 
+
+# Compare results
+
+Comapre results between the MPA network and the Null model of MPA placement
+```{r}
+# Compare results ---- 
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Load actual MPA coverage data
+actual_coverage <- read.csv("species_mpa_coverage_ALL_and_NT.csv")
+colnames(actual_coverage)[2:3]=c("ALL","NT")
+# Load random MPA coverage results
+random_ALL <- read.csv("species_random_ALL MPA_coverage.csv")
+random_NT <- read.csv("species_random_No-Take MPA_coverage.csv")
+
+# Reshape actual coverage data to long format
+actual_long <- actual_coverage %>%
+  pivot_longer(cols = c(ALL, NT), 
+               names_to = "mpa_type", 
+               values_to = "actual_percentage")
+
+# Function to merge and compare actual vs random data
+compare_coverage <- function(actual_data, random_data, mpa_type) {
+  comparison <- actual_data %>%
+    filter(mpa_type == !!mpa_type) %>%
+    left_join(random_data, by = "species") %>%
+    mutate(difference = actual_percentage - mean_percentage,
+           z_score = (actual_percentage - mean_percentage) / sd_percentage)
+  return(comparison)
+}
+
+# Create comparison dataframes
+comparison_ALL <- compare_coverage(actual_long, random_ALL, "ALL")
+comparison_NT <- compare_coverage(actual_long, random_NT, "NT")
+
+# Function to summarize and print results
+library(knitr)
+library(kableExtra)
+
+library(knitr)
+library(kableExtra)
+
+summarize_results <- function(comparison_data, mpa_type) {
+  over_represented <- mean(comparison_data$difference > 0, na.rm=TRUE) * 100
+  under_represented <- mean(comparison_data$difference < 0, na.rm=TRUE) * 100
+  equally_represented <- 100 - over_represented - under_represented
+  
+  summary_df <- data.frame(
+    Representation = c("Over-represented", "Under-represented", "Equally represented"),
+    Percentage = round(c(over_represented, under_represented, equally_represented), 2)
+  )
+  
+  kable(summary_df, format = "html", col.names = c("Representation", "Percentage (%)"),
+        caption = paste("Summary for", mpa_type, "MPAs")) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(2, width = "100px") %>%
+    row_spec(0, bold = TRUE) %>%
+    add_header_above(c(" " = 1, "Species" = 1)) %>%
+    footnote(general = "Percentages may not sum to 100% due to rounding.")
+}
+
+# Summarize results
+summarize_results(comparison_ALL, "ALL")
+summarize_results(comparison_NT, "No-Take")
+
+# Identify significantly over/under-represented species
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
+  over_represented <- comparison_data %>% 
+    filter(z_score > z_threshold) %>% 
+    arrange(desc(z_score))
+  
+  under_represented <- comparison_data %>% 
+    filter(z_score < -z_threshold) %>% 
+    arrange(z_score)
+  
+  top_5_over <- over_represented %>% 
+    select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
+    head(5)
+  
+  top_5_under <- under_represented %>% 
+    select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
+    head(5)
+  
+  combined_table <- bind_rows(
+    mutate(top_5_over, representation = "Over-represented"),
+    mutate(top_5_under, representation = "Under-represented")
+  ) %>%
+    mutate(across(where(is.numeric), ~round(., 2)))
+  
+  kable_output <- kable(combined_table, format = "html", 
+        col.names = c("Species", "Actual %", "Random %", "Difference", "Z-score", "Representation"),
+        caption = paste("Top 5 Significantly Over/Under-represented Species in", mpa_type, "MPAs")) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(1, width = "200px") %>%
+    column_spec(2:5, width = "100px") %>%
+    column_spec(6, width = "150px") %>%
+    row_spec(0, bold = TRUE) %>%
+    pack_rows("Over-represented", 1, 5, label_row_css = "background-color: #e6f3ff; color: #000;") %>%
+    pack_rows("Under-represented", 6, 10, label_row_css = "background-color: #fff0e6; color: #000;")
+  
+  footnote_text <- paste(
+    "Total significantly over-represented species:", nrow(over_represented), "\n",
+    "Total significantly under-represented species:", nrow(under_represented)
+  )
+  
+  kable_output %>%
+    footnote(general = footnote_text, general_title = "Note:")
+}
+
+# Identify significant species
+significant_species(comparison_ALL, "ALL")
+significant_species(comparison_NT, "No-Take")
+```
+
+**Key message:** 40% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs) and 50% of species are under-represented by the global no-take MPA network. 
+
+# Map results of the GAP analyses
+
+Map Standardised Effect Sizes of MPA coverage 
+```{r}
+#For ALL MPAs 
+difference_sp=comparison_ALL[,c(1,3,6)]
+
+#Plot the difference 
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+#SES:
+# Step 1: Calculate SES for each species in comparison_ALL
+comparison_ALL <- comparison_ALL %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+# Assuming you have a similar species-to-grid-cell mapping like puvsp_marine
+# Reshape puvsp_marine from wide to long format (if needed)
+puvsp_long <- puvsp_marine %>%
+  pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
+  filter(!is.na(presence) & presence == 1)  # Only keep rows where species is present
+
+# Join SES data (comparison_ALL) to puvsp_long
+combined_data <- puvsp_long %>%
+  left_join(comparison_ALL, by = c("species" = "species"))
+
+# Step 3: Group by grid cell (id, lon, lat) and calculate mean SES
+mean_ses_per_cell <- combined_data %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+# Load necessary libraries
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+
+# Step 1: Get land polygons from rnaturalearth
+land <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Step 2: Plot the mean SES with a diverging color scale
+g_ses = ggplot() +
+  geom_tile(data = mean_ses_per_cell, aes(x = lon, y = lat, fill = mean_SES)) +
+  geom_sf(data = land, fill = "darkgrey", color = NA) +  # Add land in dark grey
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", midpoint = 0  # Blue-White-Red gradient, with midpoint at 0
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +  # Set global coordinates
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",            # Position the legend at the bottom
+    legend.title = element_text(hjust = 0.5),  # Center the legend title
+    legend.key.width = unit(3, "cm"),      # Adjust width of the legend bar
+    legend.key.height = unit(0.5, "cm")    # Adjust height of the legend bar
+  ) +
+  guides(
+    fill = guide_colorbar(
+      direction = "horizontal",            # Make the legend horizontal
+      title.position = "top",              # Move the title to the top of the legend
+      title.hjust = 0.5                    # Center the title horizontally
+    )
+  ) +
+  labs(title = "Standardized Effect Size (SES) of Observed vs. Null MPA Coverage",
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Mean SES")
+print(g_ses)
+
+#For No-take MPAs 
+difference_sp=comparison_NT[,c(1,3,6)]
+
+#SES
+# Step 1: Calculate SES for each species in comparison_ALL
+comparison_ALL <- comparison_NT %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+# Assuming you have a similar species-to-grid-cell mapping like puvsp_marine
+# Reshape puvsp_marine from wide to long format (if needed)
+puvsp_long <- puvsp_marine %>%
+  pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
+  filter(!is.na(presence) & presence == 1)  # Only keep rows where species is present
+
+# Join SES data (comparison_ALL) to puvsp_long
+combined_data <- puvsp_long %>%
+  left_join(comparison_ALL, by = c("species" = "species"))
+
+# Step 3: Group by grid cell (id, lon, lat) and calculate mean SES
+mean_ses_per_cell <- combined_data %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+# Load necessary libraries
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+
+# Step 1: Get land polygons from rnaturalearth
+land <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Step 2: Plot the mean SES with a diverging color scale
+g_ses = ggplot() +
+  geom_tile(data = mean_ses_per_cell, aes(x = lon, y = lat, fill = mean_SES)) +
+  geom_sf(data = land, fill = "darkgrey", color = NA) +  # Add land in dark grey
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", midpoint = 0  # Blue-White-Red gradient, with midpoint at 0
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +  # Set global coordinates
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",            # Position the legend at the bottom
+    legend.title = element_text(hjust = 0.5),  # Center the legend title
+    legend.key.width = unit(3, "cm"),      # Adjust width of the legend bar
+    legend.key.height = unit(0.5, "cm")    # Adjust height of the legend bar
+  ) +
+  guides(
+    fill = guide_colorbar(
+      direction = "horizontal",            # Make the legend horizontal
+      title.position = "top",              # Move the title to the top of the legend
+      title.hjust = 0.5                    # Center the title horizontally
+    )
+  ) +
+  labs(title = "Standardized Effect Size (SES) of Observed vs. Null no-take MPA Coverage",
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Mean SES")
+print(g_ses)
+```
+
+**Key message:** Northern Pacific sharks and rays are less protected by all MPAs than expected under a random placement of MPAs. Northern Pacific, Northern Atlantic, Mediterranean and Continental Western African sharks and rays are less protected by no-take MPAs than expected under a random placement of no-take MPAs.  
+
+# Relate to IUCN status
+
+Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with difference tests between categories
+
+```{r}
+IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+# Remove underscores from species names
+IUCN$species <- gsub("_", " ", IUCN$Species)
+
+results_IUCN=left_join(IUCN, results, by=c("species"))
+
+library(ggplot2)
+library(dplyr)
+
+# Convert iucn_GE to a factor for better plotting
+results_IUCN$iucn_GE <- as.factor(results_IUCN$iucn_GE)
+
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",  # Red
+  "EN" = "#FC7F3F",  # Orange
+  "VU" = "#FEC748",  # Yellow
+  "NT" = "#58AFFF",  # Light Blue
+  "LC" = "#38AB38"   # Green
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+library(ggplot2)
+library(dplyr)
+library(dunn.test)
+
+# Perform Kruskal-Wallis test
+kruskal_result <- kruskal.test(percentage_in_ALL_MPA ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(results_IUCN_filtered$percentage_in_ALL_MPA, 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons
+significant_comparisons$y.position <- seq(max(results_IUCN_filtered$percentage_in_ALL_MPA, na.rm = TRUE) + 5, 
+                                          by = 5, 
+                                          length.out = nrow(significant_comparisons))
+
+# Recreate the base violin plot
+violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_ALL_MPA)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", y = "(%) Range within MPAs") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors)
+
+# Add significance bars and labels
+violin_plot_with_significance <- violin_plot +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 2),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 2),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.5, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance)
+
+# Save the plot
+#ggsave("violin_plot_with_significance.pdf", violin_plot_with_significance, width = 10, height = 8, units = "in")
+
+# Summary statistics
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean = mean(percentage_in_ALL_MPA, na.rm = TRUE),
+    median = median(percentage_in_ALL_MPA, na.rm = TRUE),
+    sd = sd(percentage_in_ALL_MPA, na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+#Now for no-take MPAs 
+kruskal_result <- kruskal.test(sqrt(percentage_in_NT_MPA) ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons
+# Perform Dunn's test for pairwise comparisons and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(sqrt(results_IUCN_filtered$percentage_in_NT_MPA), 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons
+significant_comparisons$y.position <- seq(max(results_IUCN_filtered$percentage_in_ALL_MPA, na.rm = TRUE) + 5, 
+                                          by = 5, 
+                                          length.out = nrow(significant_comparisons))
+
+# Recreate the base violin plot
+violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_NT_MPA)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", y = "(%) Range within no-take MPAs") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_y_continuous(transform = "sqrt") +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors)
+
+# Add significance bars and labels
+violin_plot_with_significance <- violin_plot +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 2),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 2),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.5, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance)
+
+# Summary statistics
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean = mean(percentage_in_NT_MPA, na.rm = TRUE),
+    median = median(percentage_in_NT_MPA, na.rm = TRUE),
+    sd = sd(percentage_in_NT_MPA, na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+```
+
+**Key message:** Least concerned species are significantly more protected by all MPAs than any other IUCN Red List threat status category. We also note a similar relationship (LC vs VU, EN & CR) for no-take MPAs, however, after p-value adjustment for multiple comparison, differences were not significant for no-take MPAs. 
+
+# Relate to species traits
+
+Relate the percentage of species range overlapped by MPAs to the trait space of species. 1) Use Pearson correlation tests between the axes of the trait space and MPA coverage. 2) Predict relationships from a GAM into the kernel density gridded trait space. 
+
+```{r}
+# Relate to species traits ----
+load(here::here("Data", "GAP analyses", "coords_1005.Rdata"))
+load(here::here("Data", "GAP analyses", "grids_commonspecies_corrected_021024.Rdata"))
+
+# Load the necessary library
+library(tibble)
+# Convert to tibble and add row names as the first column
+coords <- tibble::rownames_to_column(coords, var = "Species")
+
+colnames(results)[1]="Species"
+
+results_coords=left_join(coords, results)
+
+
+library(Hmisc)
+library(dplyr)
+library(tidyr)
+
+# Calculate correlation matrix with p-values
+cor_matrix_with_p <- rcorr(as.matrix(results_coords[, c("A1", "A2", "A3", "percentage_in_ALL_MPA", "percentage_in_NT_MPA")]))
+
+# Extract correlation coefficients and p-values
+cor_coefficients <- cor_matrix_with_p$r
+p_values <- cor_matrix_with_p$P
+
+# Create a function to format the results
+format_cor_p <- function(cor, p) {
+  sprintf("%.3f (p = %.3f)", cor, p)
+}
+
+# Create a data frame with formatted results
+result_df <- data.frame(
+  Predictor = c("A1", "A2", "A3"),
+  `percentage_in_ALL_MPA` = format_cor_p(cor_coefficients["percentage_in_ALL_MPA", c("A1", "A2", "A3")], 
+                                         p_values["percentage_in_ALL_MPA", c("A1", "A2", "A3")]),
+  `percentage_in_NT_MPA` = format_cor_p(cor_coefficients["percentage_in_NT_MPA", c("A1", "A2", "A3")], 
+                                        p_values["percentage_in_NT_MPA", c("A1", "A2", "A3")])
+)
+
+library(knitr)
+library(kableExtra)
+
+format_correlation_table <- function(result_df) {
+  kable(result_df, format = "html", escape = FALSE,
+        col.names = c("Predictor", "ALL MPA", "NT MPA"),
+        caption = "Pearson Correlation Results") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(1, bold = TRUE) %>%
+    add_header_above(c(" " = 1, "Percentage in MPA" = 2)) %>%
+    footnote(general = "Values shown as: correlation coefficient (p-value)",
+             general_title = "Note:")
+}
+
+# Usage:
+formatted_table <- format_correlation_table(result_df)
+formatted_table
+
+library(gridExtra)
+
+# Scatter plot for A1 vs percentage in ALL MPA
+plot_A1 <- ggplot(results_coords, aes(x = A1, y = percentage_in_ALL_MPA)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A1 vs Percentage in ALL MPA",
+       x = "A1",
+       y = "Percentage in ALL MPA")
+
+# Scatter plot for A2 vs percentage in ALL MPA
+plot_A2 <- ggplot(results_coords, aes(x = A2, y = percentage_in_ALL_MPA)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A2 vs Percentage in ALL MPA",
+       x = "A2",
+       y = "Percentage in ALL MPA")
+
+# Set a common aspect ratio for both plots
+plot_A1 <- plot_A1 + theme(aspect.ratio = 1)
+plot_A2 <- plot_A2 + theme(aspect.ratio = 1)
+
+# Create the combined plot
+combined_plot <- grid.arrange(plot_A1, plot_A2, ncol = 2)
+#Create kernel density of the trait space 
+# Load required packages
+library(BAT)
+
+# Assuming 'coords' is your dataframe
+# Extract the first two columns (A1 and A2)
+load(here::here("Data", "GAP analyses", "coords_1005.Rdata"))
+trait_space <- coords[, 1:2]
+sp_df=grids.fd_new
+
+# Get the species names from the trait space
+trait_species <- rownames(coords)
+
+# Subset the sp_df to keep only the columns (species) found in the trait space
+sp_df_filtered <- sp_df[, colnames(sp_df) %in% trait_species]
+
+# Replace all NA values with 0
+sp_df_filtered[is.na(sp_df_filtered)] <- 0
+
+# Create a global community matrix
+global_comm <- matrix(1, nrow = 1, ncol = ncol(sp_df_filtered))
+colnames(global_comm) <- colnames(sp_df_filtered)
+rownames(global_comm) <- "global"
+
+global_kernel <- 
+  BAT::kernel.build(comm = global_comm, 
+                    trait = trait_space,
+                    method = "gaussian")
+
+# Extract coordinates (trait values)
+trait_coords <- global_kernel@Data
+
+# Extract random points and their corresponding density values
+random_points <- global_kernel@RandomPoints
+density_values <- global_kernel@ValueAtRandomPoints
+
+# Create a data frame for the density plot
+plot_data <- data.frame(
+  A1 = random_points[,1],
+  A2 = random_points[,2],
+  Density = density_values
+)
+
+# Create a data frame for the original trait points
+trait_data <- data.frame(
+  A1 = trait_coords[,1],
+  A2 = trait_coords[,2]
+)
+
+#Build the GAM 
+library(mgcv)
+library(dplyr)
+
+# Prepare data for GAM
+gam_data <- results_coords %>%
+  select(Species, A1, A2, percentage_in_ALL_MPA) %>%
+  filter(!is.na(percentage_in_ALL_MPA))  # Remove any rows with NA in the response variable
+
+# Build GAM
+gam_model <- gam(percentage_in_ALL_MPA ~ s(A1, A2), data = gam_data, method = "REML")
+summary(gam_model)
+
+# Make predictions
+plot_data$predicted <- predict(gam_model, newdata = plot_data, type = "response")
+
+library(ggplot2)
+library(viridis)
+# Plot predictions
+gam_plot <- ggplot() +
+  geom_point(data = plot_data, aes(x = A1, y = A2, color = predicted), alpha = 0.5) +
+  #geom_point(data = gam_data, aes(x = A1, y = A2), color = "red", size = 2) +
+  scale_color_viridis_c(name = "Predicted % MPA Coverage") +
+  theme_minimal() +
+  labs(title = "GAM Predictions: Percentage in ALL MPA",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_plot)
+
+# Create a smoother surface plot
+gam_density_plot <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_viridis_c(name = "Predicted % MPA Coverage") +
+  theme_minimal() +
+  labs(title = "GAM Predictions: Percentage in ALL MPA",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_density_plot)
+```
+
+**Key message:** There is a significant relationship between the percentage of the range of sharks and rays covered by MPAs and axis 1 & 2 of the trait space. Species located in the bottom right corner of the trait space tend to be more protected, this relationship is highly significant, however, week (R2 = 0.03, p < 0.001).
+
+# Relate to phylogeny
+
+Relate the percentage of species range overlapped by MPAs to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree. 
+
+```{r}
+# Relate to phylogeny ----
+
+# For percentage range in ALL MPAs 
+library(phytools)
+library(here)
+library(dplyr)
+library(purrr)
+library(ape)
+library(stringr)
+
+# Load the list of trees
+load(here::here("Data", "GAP analyses", "list_tree_sharks_p.Rdata"))
+
+# Function to modify species names
+modify_species_name <- function(name) {
+  str_replace(name, " ", "_")
+}
+
+# Modify species names in the results dataframe
+results_IUCN_filtered <- results_IUCN_filtered %>%
+  mutate(species_modified = modify_species_name(species))
+
+compute_phylo_signal <- function(tree, data) {
+  # Ensure the data is in the same order as the tree tips and remove NAs
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(percentage_in_ALL_MPA)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  n_species_after_matching <- nrow(matched_data)
+  
+  # Prune the tree to match the available data
+  pruned_tree <- keep.tip(tree, matched_data$species_modified)
+  
+  n_tips_pruned_tree <- length(pruned_tree$tip.label)
+  
+  # Compute phylogenetic signal using Pagel's lambda, capturing any output
+  signal <- tryCatch({
+    captured_output <- capture.output({
+      result <- phylosig(pruned_tree, matched_data$percentage_in_ALL_MPA, method = "lambda", test = TRUE)
+    })
+    result$captured_output <- captured_output
+    result
+  }, error = function(e) {
+    error_message <- paste("Error in phylosig:", e$message)
+    return(list(lambda = NA, P = NA, error = error_message, captured_output = NA))
+  })
+  
+  # Return all information
+  return(list(
+    lambda = signal$lambda,
+    p_value = signal$P,
+    n_species = n_species_after_matching,
+    n_tips_pruned_tree = n_tips_pruned_tree,
+    error = if(!is.null(signal$error)) signal$error else NA,
+    captured_output = paste(signal$captured_output, collapse = "\n")
+  ))
+}
+# Apply the function to all trees: using the first two only for the moment to save time
+results <- map_dfr(list_tree_sharks_p[1:2], ~compute_phylo_signal(.x, results_IUCN_filtered), .id = "tree")
+
+# Now, create the kable separately
+library(knitr)
+library(dplyr)
+library(kableExtra)
+
+results %>%
+  select(1:4) %>%
+  kable(caption = "Phylogenetic Signal Results for all MPAs",
+        col.names = c("Tree", "Lambda", "P-value", "Number of Species"),
+        digits = 3,
+        align = c('l', 'c', 'c', 'c')) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Compute summary statistics
+summary_stats <- results %>%
+  summarise(
+    mean_lambda = mean(lambda, na.rm = TRUE),
+    median_lambda = median(lambda, na.rm = TRUE),
+    sd_lambda = sd(lambda, na.rm = TRUE),
+    mean_p = mean(p_value, na.rm = TRUE),
+    median_p = median(p_value, na.rm = TRUE),
+    sd_p = sd(p_value, na.rm = TRUE),
+    mean_n_species = mean(n_species, na.rm = TRUE),
+    min_n_species = min(n_species, na.rm = TRUE),
+    max_n_species = max(n_species, na.rm = TRUE)
+  )
+
+#print(summary_stats)
+
+# For percentage range in no-take MPAs 
+library(phytools)
+library(here)
+library(dplyr)
+library(purrr)
+library(ape)
+library(stringr)
+
+# Load the list of trees
+load(here::here("Data", "GAP analyses", "list_tree_sharks_p.Rdata"))
+
+# Function to modify species names
+modify_species_name <- function(name) {
+  str_replace(name, " ", "_")
+}
+
+# Modify species names in the results dataframe
+results_IUCN_filtered <- results_IUCN_filtered %>%
+  mutate(species_modified = modify_species_name(species))
+
+compute_phylo_signal <- function(tree, data) {
+  # Ensure the data is in the same order as the tree tips and remove NAs
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(percentage_in_NT_MPA)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  n_species_after_matching <- nrow(matched_data)
+  
+  # Prune the tree to match the available data
+  pruned_tree <- keep.tip(tree, matched_data$species_modified)
+  
+  n_tips_pruned_tree <- length(pruned_tree$tip.label)
+  
+  # Compute phylogenetic signal using Pagel's lambda, capturing any output
+  signal <- tryCatch({
+    captured_output <- capture.output({
+      result <- phylosig(pruned_tree, matched_data$percentage_in_NT_MPA, method = "lambda", test = TRUE)
+    })
+    result$captured_output <- captured_output
+    result
+  }, error = function(e) {
+    error_message <- paste("Error in phylosig:", e$message)
+    return(list(lambda = NA, P = NA, error = error_message, captured_output = NA))
+  })
+  
+  # Return all information
+  return(list(
+    lambda = signal$lambda,
+    p_value = signal$P,
+    n_species = n_species_after_matching,
+    n_tips_pruned_tree = n_tips_pruned_tree,
+    error = if(!is.null(signal$error)) signal$error else NA,
+    captured_output = paste(signal$captured_output, collapse = "\n")
+  ))
+}
+
+# Apply the function to all trees: use only the first two trees for the moment to save time
+results <- map_dfr(list_tree_sharks_p[1:2], ~compute_phylo_signal(.x, results_IUCN_filtered), .id = "tree")
+
+# Now, create the kable separately
+library(knitr)
+library(dplyr)
+library(kableExtra)
+
+results %>%
+  select(1:4) %>%
+  kable(caption = "Phylogenetic Signal Results for no-take MPAs",
+        col.names = c("Tree", "Lambda", "P-value", "Number of Species"),
+        digits = 3,
+        align = c('l', 'c', 'c', 'c')) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Compute summary statistics
+summary_stats <- results %>%
+  summarise(
+    mean_lambda = mean(lambda, na.rm = TRUE),
+    median_lambda = median(lambda, na.rm = TRUE),
+    sd_lambda = sd(lambda, na.rm = TRUE),
+    mean_p = mean(p_value, na.rm = TRUE),
+    median_p = median(p_value, na.rm = TRUE),
+    sd_p = sd(p_value, na.rm = TRUE),
+    mean_n_species = mean(n_species, na.rm = TRUE),
+    min_n_species = min(n_species, na.rm = TRUE),
+    max_n_species = max(n_species, na.rm = TRUE)
+  )
+
+#print(summary_stats)
+
+
+#Plot the tree with color gradient on terminal branches 
+library(ggtree)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+library(tidytree)
+
+# Function to get a color palette
+get_color_palette <- function(n) {
+  colorRampPalette(brewer.pal(9, "YlGnBu"))(n)  # Changed to YlGnBu
+}
+
+# All MPAs 
+# Function to plot the circular tree
+plot_circular_colored_tree <- function(tree, data) {
+  # Ensure the data is in the same order as the tree tips and remove NAs
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(percentage_in_ALL_MPA)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  # Print summary of percentage_in_ALL_MPA for debugging
+  #print(summary(matched_data$percentage_in_ALL_MPA))
+  
+  # Prune the tree to match the available data
+  pruned_tree <- ape::keep.tip(tree, matched_data$species_modified)
+  
+  # Create color palette
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  # Convert tree to tidy format and add percentage data
+  tree_data <- as_tibble(pruned_tree) %>%
+    left_join(matched_data, by = c("label" = "species_modified"))
+  
+  # Plot the circular tree
+  p <- ggtree(pruned_tree, layout="circular", aes(color=percentage_in_ALL_MPA), size =0.3) %<+% tree_data
+  
+  # Color the branches
+  p <- p + 
+    scale_color_gradientn(colours = color_palette, 
+                          name = "% Range within all MPAs",
+                          limits = c(0, 100),
+                          na.value = "grey50") +
+    theme(legend.position = "right")
+  
+  # Remove default labels and add a title
+  p <- p + theme(plot.title = element_text(hjust = 0.5)) 
+  
+  return(p)
+}
+
+# Plot the first tree
+tree_plot_ALL <- plot_circular_colored_tree(list_tree_sharks_p[[1]], results_IUCN_filtered)
+
+# Display the plot
+print(tree_plot_ALL)
+
+# No-take MPAs 
+# Function to plot the circular tree
+plot_circular_colored_tree <- function(tree, data) {
+  # Ensure the data is in the same order as the tree tips and remove NAs
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(percentage_in_NT_MPA)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  # Print summary of percentage_in_ALL_MPA for debugging
+  #print(summary(matched_data$percentage_in_NT_MPA))
+  
+  # Prune the tree to match the available data
+  pruned_tree <- ape::keep.tip(tree, matched_data$species_modified)
+  
+  # Create color palette
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  # Convert tree to tidy format and add percentage data
+  tree_data <- as_tibble(pruned_tree) %>%
+    left_join(matched_data, by = c("label" = "species_modified"))
+  
+  # Plot the circular tree
+  p <- ggtree(pruned_tree, layout="circular", aes(color=percentage_in_NT_MPA), size =0.3) %<+% tree_data
+  
+  # Color the branches
+  p <- p + 
+    scale_color_gradientn(colours = color_palette, 
+                          name = "% Range within no-take MPAs",
+                          limits = c(0, 100),
+                          na.value = "grey50") +
+    theme(legend.position = "right")
+  
+  # Remove default labels and add a title
+  p <- p + theme(plot.title = element_text(hjust = 0.5)) 
+  
+  return(p)
+}
+
+# Plot the first tree
+tree_plot_NT <- plot_circular_colored_tree(list_tree_sharks_p[[1]], results_IUCN_filtered)
+
+# Display the plot
+print(tree_plot_NT)
+
+#ggpubr::ggarrange(tree_plot_ALL, tree_plot_NT, common.legend = T, legend = "bottom")
+```
+
+**Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; < 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 > p > 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees. 
+
