@@ -20,7 +20,7 @@ execute:
 
 # Load the data
 
-Load the grid and the MPA raster layers 
+Load the grid and the MPA raster layers
 
 ```{r}
 # Load necessary libraries
@@ -41,7 +41,8 @@ mpa_NT <- raster::raster(here::here("Data", "GAP analyses", "mpa_NT_binary.tif")
 
 # GAP analyses
 
-GAP analyses of shark and ray range overlaps with Marine Protected Areas 
+GAP analyses of shark and ray range overlaps with Marine Protected Areas
+
 ```{r}
 # Convert species dataframe to spatial points
 species_points <- SpatialPointsDataFrame(coords = puvsp_marine[, c("lon", "lat")], 
@@ -106,7 +107,8 @@ print(summary(results$percentage_in_NT_MPA))
 
 # Null model of MPA placement
 
-Null model of MPA placement and overlaps with the range of sharks and rays 
+Null model of MPA placement and overlaps with the range of sharks and rays
+
 ```{r}
 library(raster)
 library(here)
@@ -255,11 +257,12 @@ if (exists("random_results_NT")) {
 }
 ```
 
-**Important note:** This NULL model randomly distributes protected grid cells at a 0.5-degree resolution. However, it does not preserve MPA shape and size and does not account for jurisdictions in its random placement. 
+**Important note:** This NULL model randomly distributes protected grid cells at a 0.5-degree resolution. However, it does not preserve MPA shape and size and does not account for jurisdictions in its random placement.
 
 # Compare results
 
 Comapre results between the MPA network and the Null model of MPA placement
+
 ```{r}
 # Compare results ---- 
 library(dplyr)
@@ -381,11 +384,12 @@ significant_species(comparison_ALL, "ALL")
 significant_species(comparison_NT, "No-Take")
 ```
 
-**Key message:** 40% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs) and 50% of species are under-represented by the global no-take MPA network. 
+**Key message:** 40% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs) and 50% of species are under-represented by the global no-take MPA network.
 
 # Map results of the GAP analyses
 
-Map Standardised Effect Sizes of MPA coverage 
+Map Standardised Effect Sizes of MPA coverage
+
 ```{r}
 #For ALL MPAs 
 difference_sp=comparison_ALL[,c(1,3,6)]
@@ -514,7 +518,7 @@ g_ses = ggplot() +
 print(g_ses)
 ```
 
-**Key message:** Northern Pacific sharks and rays are less protected by all MPAs than expected under a random placement of MPAs. Northern Pacific, Northern Atlantic, Mediterranean and Continental Western African sharks and rays are less protected by no-take MPAs than expected under a random placement of no-take MPAs.  
+**Key message:** Northern Pacific sharks and rays are less protected by all MPAs than expected under a random placement of MPAs. Northern Pacific, Northern Atlantic, Mediterranean and Continental Western African sharks and rays are less protected by no-take MPAs than expected under a random placement of no-take MPAs.
 
 # Relate to IUCN status
 
@@ -761,11 +765,11 @@ print(summary_stats)
 
 ```
 
-**Key message:** Least concerned species are significantly more protected by all MPAs than any other IUCN Red List threat status category. We also note a similar relationship (LC vs VU, EN & CR) for no-take MPAs, however, after p-value adjustment for multiple comparison, differences were not significant for no-take MPAs. 
+**Key message:** Least concerned species are significantly more protected by all MPAs than any other IUCN Red List threat status category. We also note a similar relationship (LC vs VU, EN & CR) for no-take MPAs, however, after p-value adjustment for multiple comparison, differences were not significant for no-take MPAs.
 
 # Relate to species traits
 
-Relate the percentage of species range overlapped by MPAs to the trait space of species. 1) Use Pearson correlation tests between the axes of the trait space and MPA coverage. 2) Predict relationships from a GAM into the kernel density gridded trait space. 
+Relate the percentage of species range overlapped by MPAs to the trait space of species. 1) Use Pearson correlation tests between the axes of the trait space and MPA coverage. 2) Predict relationships from a GAM into the kernel density gridded trait space.
 
 ```{r}
 # Relate to species traits ----
@@ -943,11 +947,11 @@ gam_density_plot <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
 print(gam_density_plot)
 ```
 
-**Key message:** There is a significant relationship between the percentage of the range of sharks and rays covered by MPAs and axis 1 & 2 of the trait space. Species located in the bottom right corner of the trait space tend to be more protected, this relationship is highly significant, however, week (R2 = 0.03, p < 0.001).
+**Key message:** There is a significant relationship between the percentage of the range of sharks and rays covered by MPAs and axis 1 & 2 of the trait space. Species located in the bottom right corner of the trait space tend to be more protected, this relationship is highly significant, however, week (R2 = 0.03, p \< 0.001).
 
 # Relate to phylogeny
 
-Relate the percentage of species range overlapped by MPAs to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree. 
+Relate the percentage of species range overlapped by MPAs to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
 
 ```{r}
 # Relate to phylogeny ----
@@ -1237,5 +1241,4 @@ print(tree_plot_NT)
 #ggpubr::ggarrange(tree_plot_ALL, tree_plot_NT, common.legend = T, legend = "bottom")
 ```
 
-**Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; < 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 > p > 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees. 
-
+**Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; \< 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 \> p \> 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees.
