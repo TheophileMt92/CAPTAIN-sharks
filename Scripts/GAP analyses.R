@@ -645,8 +645,8 @@ ggpubr::ggarrange(g1, g2, g3, g4,
                   ncol = 2, nrow = 2)
 
 #SES
-# Step 1: Calculate SES for each species in comparison_ALL
-comparison_ALL <- comparison_NT %>%
+# Step 1: Calculate SES for each species in comparison_NT
+comparison_NT <- comparison_NT %>%
   mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
 
 # Assuming you have a similar species-to-grid-cell mapping like puvsp_marine
@@ -655,9 +655,9 @@ puvsp_long <- puvsp_marine %>%
   pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
   filter(!is.na(presence) & presence == 1)  # Only keep rows where species is present
 
-# Join SES data (comparison_ALL) to puvsp_long
+# Join SES data (comparison_NT) to puvsp_long
 combined_data <- puvsp_long %>%
-  left_join(comparison_ALL, by = c("species" = "species"))
+  left_join(comparison_NT, by = c("species" = "species"))
 
 # Step 3: Group by grid cell (id, lon, lat) and calculate mean SES
 mean_ses_per_cell <- combined_data %>%
