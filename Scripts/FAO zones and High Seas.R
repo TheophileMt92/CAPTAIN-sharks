@@ -9,10 +9,10 @@ FAO=st_read(here::here("Data", "fao", "World_Fao_Zones.shp"))
 plot(st_geometry(FAO))
 
 High_seas=st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"))
-plot(st_geometry(High_seas), add=T)
+plot(st_geometry(High_seas))
 
 EEZ_world=st_read(here::here("Data", "World_EEZ_v12_20231025", "eez_boundaries_v12.shp"))
-#plot(st_geometry(EEZ_world))
+plot(st_geometry(EEZ_world))
 
 # Ensure both layers are in the same CRS
 High_seas <- st_transform(High_seas, st_crs(FAO))

@@ -1,4 +1,3 @@
-
 # Loading in the required libraries ----
 library(tidyverse)
 library(readxl)
@@ -445,7 +444,6 @@ shark.coordinates <- puvsp_marine %>%
 write.csv(shark.coordinates[,-1], here::here("Data", "My dataframes","pu_coords_no_freshwater_harmonised.csv"), row.names=FALSE)
 
 # Check all datasets ----
-
 pu_fishing_data <- read.csv(here::here("Data", 
                                        "Theos datasets", 
                                        "Budget 30% all MPAs", 

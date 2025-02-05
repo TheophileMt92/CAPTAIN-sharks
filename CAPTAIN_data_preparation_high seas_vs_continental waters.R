@@ -74,6 +74,8 @@ continental_coordinates <- prepare_coordinates(continental_species, "continental
 
 # Fishing datasets ---- 
 # First create separate fishing predictions dataframes
+load("Data/Raw/predicted_fishing_everywhere_05Deg.Rdata")
+
 Fishing_preds <- prediction_data_env %>%
   dplyr::rename(Coord_x = 1, Coord_y = 2)
 
@@ -173,67 +175,46 @@ shark.info <- shark.info %>%
     IUCN == "CR" ~ 4,
     TRUE ~ as.numeric(as.character(IUCN))
   )) %>%
-  mutate(IUCN = decostand(IUCN, "range", na.rm = TRUE))
+  mutate(IUCN = vegan::decostand(IUCN, "range", na.rm = TRUE))
 
-# Function to process datasets for each zone
-process_zone_metrics <- function(shark.info, puvsp_zone, zone_name) {
-  # Get the species names from zone-specific dataset
-  species_in_zone <- names(puvsp_zone)[4:ncol(puvsp_zone)]
+# Filter to species with complete metrics
+shark.info_complete <- shark.info %>%
+  drop_na(ED, EDGE_P100, FUSE, EDGE2, FUn, FSp)
+
+cat("Species with complete metrics:", nrow(shark.info_complete), "\n")
+
+# Filter PUVSP data to match species in metrics
+filter_puvsp_to_metrics <- function(puvsp_data, shark_info_complete) {
+  # Get species columns (assuming columns 4+ are species)
+  species_cols <- names(puvsp_data)[4:ncol(puvsp_data)]
   
-  # Filter shark.info for zone-specific species
-  zone_shark_info <- shark.info %>%
-    filter(Species %in% species_in_zone) %>%
-    mutate(SpeciesID = row_number())
+  # Keep only species that are in shark_info_complete
+  species_to_keep <- species_cols[species_cols %in% shark_info_complete$Species]
   
-  # Print the number of species retained
-  print(paste("Number of species retained in", zone_name, ":", nrow(zone_shark_info)))
+  # Select these species plus the coordinate columns
+  filtered_puvsp <- puvsp_data %>%
+    select(id, lon, lat, all_of(species_to_keep))
   
-  # Process each metric for the zone
-  process_dataset <- function(shark.info, puvsp, metric) {
-    # Drop NAs and extract species IDs
-    info <- drop_na(shark.info, {{metric}})
-    species_ids <- info$SpeciesID
-    
-    # Create transformed dataset using the metric values as amount
-    transformed <- info %>%
-      dplyr::select(SpeciesID, {{metric}}) %>%
-      dplyr::rename(sp = SpeciesID, amount = {{metric}}) %>%
-      # Scale the amount values so the maximum is 1
-      dplyr::mutate(amount = amount / max(amount, na.rm = TRUE))
-    
-    return(list(info = info, species = species_ids, transformed = transformed))
-  }
+  cat("Original species count:", length(species_cols), "\n")
+  cat("Species after filtering:", length(species_to_keep), "\n")
   
-  # Process each dataset
-  metrics <- c("EDGE_P100", "FUSE", "EDGE2", "IUCN", "ED", "FSp", "FUn")
-  results <- lapply(metrics, function(metric) {
-    process_dataset(zone_shark_info, puvsp, metric)
-  })
-  
-  names(results) <- metrics
-  
-  # Save the results
-  saveRDS(results, 
-          here::here("Data", "My dataframes", 
-                     paste0(zone_name, "_shark_conservation_metrics.rds")))
-  
-  jsonlite::write_json(results, 
-                       here::here("Data", "My dataframes", 
-                                  paste0(zone_name, "_shark_conservation_metrics.json")))
-  
-  return(results)
+  return(filtered_puvsp)
 }
 
+# Filter both PUVSP datasets
+highseas_species <- filter_puvsp_to_metrics(highseas_species, shark.info_complete)
+continental_species <- filter_puvsp_to_metrics(continental_species, shark.info_complete)
+
+# Then use shark.info_complete in process_zone_metrics
 # Process for high seas
-highseas_results <- process_zone_metrics(shark.info, 
+highseas_results <- process_zone_metrics(shark.info_complete, 
                                          highseas_species, 
                                          "highseas")
 
 # Process for continental waters
-continental_results <- process_zone_metrics(shark.info, 
+continental_results <- process_zone_metrics(shark.info_complete, 
                                             continental_species, 
                                             "continental")
-
 # Add the MPA data ----
 # Function to read and filter MPA data
 read_and_filter_mpa <- function(file_number) {
@@ -410,63 +391,376 @@ library(purrr)
 library(stringr)
 library(here)
 
-# Function to process already transformed PUVSP data
-process_zone_data <- function(puvsp_data, coordinates_data, zone_name) {
-  # No need to transform the data, just save it
-  write.csv(puvsp_data, 
-            here::here("Data", "My dataframes", paste0(zone_name, "_puvsp_harmonised.csv")), 
-            row.names=FALSE)
+# Load the existing files
+highseas_metrics <- readRDS(here::here("Data", "My dataframes", "highseas_shark_conservation_metrics.rds"))
+continental_metrics <- readRDS(here::here("Data", "My dataframes", "continental_shark_conservation_metrics.rds"))
+
+# Function to harmonize metrics with PUVSP species
+harmonize_data <- function(metrics_data, puvsp_data, zone_name) {
+  if(zone_name == "highseas") {
+    # For highseas: filter metrics to match PUVSP species
+    puvsp_species_ids <- unique(puvsp_data$sp)
+    
+    harmonized_metrics <- lapply(metrics_data, function(metric) {
+      metric$transformed <- metric$transformed %>%
+        filter(sp %in% puvsp_species_ids)
+      
+      metric$species <- metric$species[metric$species %in% puvsp_species_ids]
+      metric$info <- metric$info %>%
+        filter(SpeciesID %in% puvsp_species_ids)
+      
+      return(metric)
+    })
+    
+    harmonized_puvsp <- puvsp_data  # No change needed for highseas PUVSP
+    
+  } else {
+    # For continental: filter PUVSP to match metrics species
+    metrics_species_ids <- unique(metrics_data$EDGE_P100$transformed$sp)
+    
+    harmonized_metrics <- metrics_data  # No change needed for continental metrics
+    harmonized_puvsp <- puvsp_data %>%
+      filter(sp %in% metrics_species_ids)
+  }
   
-  write.csv(coordinates_data, 
-            here::here("Data", "My dataframes", paste0(zone_name, "_coords_harmonised.csv")), 
-            row.names=FALSE)
+  # Save harmonized metrics
+  saveRDS(harmonized_metrics, 
+          here::here("Data", "My dataframes", 
+                     paste0(zone_name, "_shark_conservation_metrics_harmonised.rds")))
   
-  # Return summary statistics
+  jsonlite::write_json(harmonized_metrics,
+                       here::here("Data", "My dataframes", 
+                                  paste0(zone_name, "_shark_conservation_metrics_harmonised.json")))
+  
+  # Save harmonized PUVSP
+  write.csv(harmonized_puvsp,
+            here::here("Data", "My dataframes", 
+                       paste0(zone_name, "_puvsp_harmonised.csv")),
+            row.names = FALSE)
+  
+  # Return summary
   return(list(
-    n_species = length(unique(puvsp_data$sp)),
-    n_planning_units = nrow(coordinates_data),
-    species_ids = unique(puvsp_data$sp)
+    n_species = if(zone_name == "highseas") length(puvsp_species_ids) else length(metrics_species_ids),
+    species_ids = if(zone_name == "highseas") puvsp_species_ids else metrics_species_ids
   ))
 }
 
-# Process high seas data
-highseas_stats <- process_zone_data(
+# Harmonize high seas data
+highseas_harmonized <- harmonize_data(
+  highseas_metrics,
   highseas_puvsp,
-  highseas_coordinates,
   "highseas"
 )
 
-# Process continental data
-continental_stats <- process_zone_data(
+# Harmonize continental data
+continental_harmonized <- harmonize_data(
+  continental_metrics,
   continental_puvsp,
-  continental_coordinates,
   "continental"
 )
 
 # Print summaries
-cat("\nHigh Seas Summary:\n")
-cat("Number of species:", highseas_stats$n_species, "\n")
-cat("Number of planning units:", highseas_stats$n_planning_units, "\n")
+cat("\nHigh Seas Harmonized Summary:\n")
+cat("Number of species:", highseas_harmonized$n_species, "\n")
 
-cat("\nContinental Waters Summary:\n")
-cat("Number of species:", continental_stats$n_species, "\n")
-cat("Number of planning units:", continental_stats$n_planning_units, "\n")
+cat("\nContinental Waters Harmonized Summary:\n")
+cat("Number of species:", continental_harmonized$n_species, "\n")
 
-# Verify common species between zones
-common_species_both_zones <- intersect(
-  highseas_stats$species_ids,
-  continental_stats$species_ids
-)
-cat("\nSpecies common to both zones:", length(common_species_both_zones), "\n")
-
-# Check final datasets
-for (zone in c("highseas", "continental")) {
-  cat(paste("\nChecking", zone, "datasets:\n"))
+# Verify that species match between metrics and PUVSP for each zone
+verify_species_match <- function(zone_name) {
+  metrics <- readRDS(here::here("Data", "My dataframes", 
+                                paste0(zone_name, "_shark_conservation_metrics_harmonised.rds")))
+  puvsp <- read.csv(here::here("Data", "My dataframes", 
+                               paste0(zone_name, "_puvsp_harmonised.csv")))
   
-  puvsp_file <- read.csv(here::here("Data", "My dataframes", paste0(zone, "_puvsp_harmonised.csv")))
-  coords_file <- read.csv(here::here("Data", "My dataframes", paste0(zone, "_coords_harmonised.csv")))
+  metrics_species <- unique(metrics$EDGE_P100$transformed$sp)
+  puvsp_species <- unique(puvsp$sp)
   
-  cat("PUVSP dimensions:", dim(puvsp_file), "\n")
-  cat("Coordinates dimensions:", dim(coords_file), "\n")
-  cat("Unique species in PUVSP:", length(unique(puvsp_file$sp)), "\n")
+  cat("\nVerification for", zone_name, ":\n")
+  cat("Species in metrics:", length(metrics_species), "\n")
+  cat("Species in PUVSP:", length(puvsp_species), "\n")
+  cat("Matching species:", length(intersect(metrics_species, puvsp_species)), "\n")
 }
+
+verify_species_match("highseas")
+verify_species_match("continental")
+
+# Make sure that we've removed the correct species ----
+# Function to extract and compare species details
+compare_species_details <- function(zone_name) {
+  # Load datasets
+  metrics <- readRDS(here::here("Data", "My dataframes", 
+                                paste0(zone_name, "_shark_conservation_metrics_harmonised.rds")))
+  puvsp <- read.csv(here::here("Data", "My dataframes", 
+                               paste0(zone_name, "_puvsp_harmonised.csv")))
+  
+  # Get species from metrics (including names if available)
+  metrics_species <- metrics$EDGE_P100$info %>%
+    select(SpeciesID, Species) %>%
+    distinct()
+  
+  # Get unique species from PUVSP
+  puvsp_species <- data.frame(SpeciesID = unique(puvsp$sp))
+  
+  # Compare sets
+  all_species <- full_join(
+    metrics_species %>% mutate(in_metrics = TRUE),
+    puvsp_species %>% mutate(in_puvsp = TRUE),
+    by = "SpeciesID"
+  ) %>%
+    mutate(
+      in_metrics = ifelse(is.na(in_metrics), FALSE, in_metrics),
+      in_puvsp = ifelse(is.na(in_puvsp), FALSE, in_puvsp)
+    )
+  
+  # Save comparison to CSV
+  write.csv(all_species,
+            here::here("Data", "My dataframes", 
+                       paste0(zone_name, "_species_comparison.csv")),
+            row.names = FALSE)
+  
+  # Print summary
+  cat("\nSpecies comparison for", zone_name, ":\n")
+  cat("Total unique species:", nrow(all_species), "\n")
+  cat("Species in both datasets:", sum(all_species$in_metrics & all_species$in_puvsp), "\n")
+  cat("Species only in metrics:", sum(all_species$in_metrics & !all_species$in_puvsp), "\n")
+  cat("Species only in PUVSP:", sum(!all_species$in_metrics & all_species$in_puvsp), "\n")
+  
+  # Show examples of mismatches
+  cat("\nExamples of mismatches:\n")
+  print(head(all_species %>% 
+               filter(xor(in_metrics, in_puvsp)) %>%
+               arrange(SpeciesID)))
+  
+  # Return the comparison dataframe
+  return(all_species)
+}
+
+# Run comparison for both zones
+highseas_comparison <- compare_species_details("highseas")
+continental_comparison <- compare_species_details("continental")
+
+# Function to check species ID and name correspondence
+check_species_names <- function(zone_name) {
+  # Load datasets
+  metrics <- readRDS(here::here("Data", "My dataframes", 
+                                paste0(zone_name, "_shark_conservation_metrics_harmonised.rds")))
+  puvsp <- read.csv(here::here("Data", "My dataframes", 
+                               paste0(zone_name, "_puvsp_harmonised.csv")))
+  
+  # Get species info from metrics
+  metrics_species <- metrics$EDGE_P100$info %>%
+    select(SpeciesID, Species) %>%
+    distinct()
+  
+  # Get unique species IDs from PUVSP
+  puvsp_species <- data.frame(SpeciesID = unique(puvsp$sp))
+  
+  # Compare
+  comparison <- full_join(
+    metrics_species,
+    puvsp_species,
+    by = "SpeciesID"
+  )
+  
+  # Print summary
+  cat("\nSpecies ID and name check for", zone_name, ":\n")
+  cat("Total species IDs:", nrow(comparison), "\n")
+  cat("\nExample of species matches (first 10):\n")
+  print(head(comparison, 10))
+  
+  return(comparison)
+}
+
+# Run checks for both zones
+highseas_names <- check_species_names("highseas")
+continental_names <- check_species_names("continental")
+
+# Function to compare specific ID ranges
+compare_id_range <- function(zone1_name, zone2_name, id_start, id_end) {
+  # Load datasets
+  metrics1 <- readRDS(here::here("Data", "My dataframes", 
+                                 paste0(zone1_name, "_shark_conservation_metrics_harmonised.rds")))
+  metrics2 <- readRDS(here::here("Data", "My dataframes", 
+                                 paste0(zone2_name, "_shark_conservation_metrics_harmonised.rds")))
+  
+  # Extract species info
+  species1 <- metrics1$EDGE_P100$info %>%
+    select(SpeciesID, Species) %>%
+    distinct() %>%
+    filter(SpeciesID >= id_start & SpeciesID <= id_end) %>%
+    arrange(SpeciesID)
+  
+  species2 <- metrics2$EDGE_P100$info %>%
+    select(SpeciesID, Species) %>%
+    distinct() %>%
+    filter(SpeciesID >= id_start & SpeciesID <= id_end) %>%
+    arrange(SpeciesID)
+  
+  # Create comparison dataframe
+  comparison <- full_join(
+    species1 %>% rename(Highseas_Species = Species),
+    species2 %>% rename(Continental_Species = Species),
+    by = "SpeciesID"
+  ) %>%
+    mutate(Match = Highseas_Species == Continental_Species)
+  
+  return(comparison)
+}
+
+# Compare species 180-200
+comparison <- compare_id_range("highseas", "continental", 180, 200)
+print(comparison)
+
+check_species_match <- function(zone_name) {
+  # Load datasets
+  metrics <- readRDS(here::here("Data", "My dataframes", 
+                                paste0(zone_name, "_shark_conservation_metrics_harmonised.rds")))
+  puvsp <- read.csv(here::here("Data", "My dataframes", 
+                               paste0(zone_name, "_puvsp_harmonised.csv")))
+  
+  # Get unique species from each dataset
+  metrics_species <- metrics$EDGE_P100$info %>%
+    select(SpeciesID, Species) %>%
+    distinct()
+  
+  puvsp_species <- data.frame(
+    SpeciesID = unique(puvsp$sp)
+  )
+  
+  # Compare presence in both datasets
+  comparison <- full_join(
+    metrics_species %>% 
+      mutate(in_metrics = TRUE),
+    puvsp_species %>% 
+      mutate(in_puvsp = TRUE),
+    by = "SpeciesID"
+  ) %>%
+    mutate(
+      in_metrics = replace_na(in_metrics, FALSE),
+      in_puvsp = replace_na(in_puvsp, FALSE)
+    )
+  
+  # Print summary
+  cat("\nSpecies match analysis for", zone_name, ":\n")
+  cat("Total species in metrics:", sum(comparison$in_metrics), "\n")
+  cat("Total species in PUVSP:", sum(comparison$in_puvsp), "\n")
+  cat("Species in both datasets:", sum(comparison$in_metrics & comparison$in_puvsp), "\n")
+  cat("Species only in metrics:", sum(comparison$in_metrics & !comparison$in_puvsp), "\n")
+  cat("Species only in PUVSP:", sum(!comparison$in_metrics & comparison$in_puvsp), "\n\n")
+  
+  # Show species that are only in one dataset
+  cat("First few species only in PUVSP (if any):\n")
+  print(head(comparison[!comparison$in_metrics & comparison$in_puvsp, ], 5))
+  cat("\nFirst few species only in metrics (if any):\n")
+  print(head(comparison[comparison$in_metrics & !comparison$in_puvsp, ], 5))
+  
+  return(comparison)
+}
+
+# Check both zones
+highseas_comparison <- check_species_match("highseas")
+continental_comparison <- check_species_match("continental")
+
+# Bind conservation metrics to a minimum of 10% and 30% ----
+create_budget_scenarios <- function(zone_name) {
+  # Load metrics - adjusting path to match your structure
+  metrics <- jsonlite::fromJSON(here::here("Data", "My dataframes", 
+                                           paste0(zone_name, "_shark_conservation_metrics_harmonised.json")))
+  
+  # Create 10% scenario
+  metrics_10 <- metrics
+  for(metric_name in names(metrics_10)) {
+    metrics_10[[metric_name]]$transformed$amount <- pmax(metrics_10[[metric_name]]$transformed$amount, 0.1)
+  }
+  
+  # Create 30% scenario
+  metrics_30 <- metrics
+  for(metric_name in names(metrics_30)) {
+    metrics_30[[metric_name]]$transformed$amount <- pmax(metrics_30[[metric_name]]$transformed$amount, 0.3)
+  }
+  
+  # Save the new datasets - adjusting path
+  jsonlite::write_json(metrics_10, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_10_harmonised.json")))
+  jsonlite::write_json(metrics_30, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_30_harmonised.json")))
+}
+
+# Create scenarios for both zones
+create_budget_scenarios("continental")
+create_budget_scenarios("highseas")
+
+check_metrics <- function(zone_name) {
+  metrics_10 <- jsonlite::fromJSON(here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_10.json")),
+                                   simplifyDataFrame = TRUE)
+  metrics_30 <- jsonlite::fromJSON(here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_30.json")),
+                                   simplifyDataFrame = TRUE)
+  
+  # Function to get summary statistics for each metric
+  summarize_metric <- function(metric_data) {
+    # Convert to numeric if necessary and handle NAs
+    amount <- as.numeric(metric_data$transformed$amount)
+    amount <- amount[!is.na(amount)]
+    
+    return(data.frame(
+      min = min(amount),
+      median = median(amount),
+      mean = round(mean(amount), 4),
+      max = max(amount),
+      n_below_threshold = sum(amount < 0.1)
+    ))
+  }
+  
+  # Create summary tables
+  cat("\nSummary for", zone_name, ":\n")
+  
+  cat("\n10% Budget Scenario:\n")
+  summary_10 <- do.call(rbind, lapply(names(metrics_10), function(metric) {
+    stats <- summarize_metric(metrics_10[[metric]])
+    cbind(metric = metric, stats)
+  }))
+  rownames(summary_10) <- NULL
+  print(summary_10)
+  
+  cat("\n30% Budget Scenario:\n")
+  summary_30 <- do.call(rbind, lapply(names(metrics_30), function(metric) {
+    stats <- summarize_metric(metrics_30[[metric]])
+    cbind(metric = metric, stats)
+  }))
+  rownames(summary_30) <- NULL
+  print(summary_30)
+}
+
+# Check metrics
+check_metrics("continental")
+check_metrics("highseas")
+
+# Check all datasets ----
+pu_fishing_data <- read.csv(here::here("Data", 
+                                       "My Dataframes", 
+                                       "Continental", 
+                                       "continental_fishing_allMPAs.csv"))
+summary(pu_fishing_data)
+
+puvsp <- read.csv(here::here("Data", 
+                             "My Dataframes", 
+                             "Continental", 
+                             "continental_puvsp_harmonised.csv"))
+summary(puvsp)
+length(unique(puvsp$sp))
+pu_coords <- read.csv(here::here("Data", 
+                                 "My Dataframes", 
+                                 "Continental", 
+                                 "continental_coords_harmonised.csv"))
+summary(pu_coords)
+
+shark_conservation_metrics <- jsonlite::fromJSON(here::here("Data", "My dataframes", "Continental", 
+                                                            "continental_shark_conservation_metrics.json"))
+
+# View the structure of the data
+str(shark_conservation_metrics)
+length(shark_conservation_metrics$EDGE2$transformed[,1])
+summary(as.data.frame(shark_conservation_metrics$EDGE2$transformed))
