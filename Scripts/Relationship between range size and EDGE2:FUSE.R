@@ -40,9 +40,9 @@ colnames(conservation_df)[2:4] <- c("Range_size", "EDGE2", "FUSE")
 
 # 1. Correlation tests
 # Spearman correlation (doesn't assume normality)
-cor_edge <- cor.test(conservation_df$Range_size, conservation_df$EDGE2, 
+cor_edge <- cor.test(log10(conservation_df$Range_size), conservation_df$EDGE2, 
                      method = "spearman", use = "complete.obs")
-cor_fuse <- cor.test(conservation_df$Range_size, conservation_df$FUSE, 
+cor_fuse <- cor.test(log10(conservation_df$Range_size), conservation_df$FUSE, 
                      method = "spearman", use = "complete.obs")
 
 # Print correlation results
@@ -58,22 +58,25 @@ library(gridExtra)
 # Create scatter plot for EDGE2
 p1 <- ggplot(conservation_df, aes(x = Range_size, y = EDGE2)) +
   geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", color = "blue") +
+  #geom_smooth(method = "lm", color = "blue") +
+  scale_x_log10() +
   theme_bw() +
   labs(x = "Range Size (km²)", 
        y = "EDGE2 Score",
        title = "Range Size vs EDGE2") +
   theme(plot.title = element_text(hjust = 0.5))
+p1
 
 # Create scatter plot for FUSE
 p2 <- ggplot(conservation_df, aes(x = Range_size, y = FUSE)) +
   geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", color = "red") +
+ # geom_smooth(method = "lm", color = "red") +
+  scale_x_log10() +
   theme_bw() +
   labs(x = "Range Size (km²)", 
        y = "FUSE Score",
        title = "Range Size vs FUSE") +
   theme(plot.title = element_text(hjust = 0.5))
-
+p2
 # Arrange plots side by side
 grid.arrange(p1, p2, ncol = 2)
