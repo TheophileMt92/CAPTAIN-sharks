@@ -1,0 +1,165 @@
+---
+title: "CAPTAIN workflow continental vs highseas"
+author: "Théophile L. Mouton"
+date: "February 12, 2025"
+format:
+  html:
+    toc: true
+    toc-location: right
+    css: custom.css
+    output-file: "CAPTAIN workflow continental vs highseas.html"
+    self-contained: true
+    code-fold: true
+    code-tools: true
+editor: visual
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+# Visualise CAPTAIN results
+
+### R libraries
+
+```{r}
+library(readr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(dplyr)
+library(gridExtra)
+library(biscale)
+library(colorspace)
+library(grid)
+library(jsonlite)
+library(here)
+```
+
+### FUSE
+
+```{r}
+# Read the RDS file from the Data folder
+data <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform the data to sf object and project
+data_sf <- st_as_sf(data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the outline from the projected world map
+outline <- st_union(world_projected) %>% st_boundary()
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the plot
+ggplot() +
+  # Add points for each planning unit, colored by priority
+  geom_sf(data = data_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  # Add the world map with a light gray fill
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  # Add the black outline around the globe
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +  # Add the globe border
+  # Use a white to yellow to blue color gradient
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  # Add labels and title
+  labs(title = "Global Distribution of Conservation Priorities",
+       subtitle = "Index: FUSE, Budget: 0.3, Replicates: 10",
+       x = NULL, y = NULL) +
+  # Adjust theme
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Protection fraction summary
+# Read the data
+prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_continental.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
+
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
+
+# Create a mapping between species and their FUSE values
+species_FUSE_map <- data.frame(
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
+)
+
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
+
+# Create histogram for Mean_Protect_Fraction
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Mean Protect Fraction",
+       x = "Mean Protect Fraction",
+       y = "Count")
+
+# Create histogram for EDGE2
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of FUSE Scores",
+       x = "FUSE Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction",
+       x = "FUSE Score",
+       y = "Mean Protect Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_fuse, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+```
