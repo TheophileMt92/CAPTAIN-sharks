@@ -19,6 +19,8 @@ range_size_df <- data.frame(
   Range_size = range_sizes_km2
 )     
 
+saveRDS(range_size_df, file = here::here("Data", "species_range_sizes.rds"))
+
 # Open the EDGE2 and FUSE data and create dataframes
 file_name <- here::here("Data", "My dataframes", "shark_conservation_metrics_no_freshwater.rds")
 results <- readRDS(file = file_name)
