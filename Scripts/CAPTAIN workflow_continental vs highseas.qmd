@@ -40,8 +40,9 @@ library(here)
 ### FUSE
 
 ```{r}
-# Read the RDS file from the Data folder
-data <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+# Read both RDS files from the Data folder
+continental_data <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+high_seas_data <- readRDS(here::here("Data/FUSE_full_results_high_seas_averaged_budget0.3_replicates10.rds"))
 
 # Get world map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -49,15 +50,21 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 # Define the McBryde-Thomas 2 projection
 mcbryde_thomas_2 <- "+proj=mbt_s"
 
-# Transform the data to sf object and project
-data_sf <- st_as_sf(data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+# Transform both datasets to sf objects and project
+continental_sf <- st_as_sf(continental_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
+
+high_seas_sf <- st_as_sf(high_seas_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Combine the datasets
+combined_sf <- rbind(
+  mutate(continental_sf, Region = "Continental Waters"),
+  mutate(high_seas_sf, Region = "High Seas")
+)
 
 # Project the world map
 world_projected <- st_transform(world, crs = mcbryde_thomas_2)
-
-# Create the outline from the projected world map
-outline <- st_union(world_projected) %>% st_boundary()
 
 # Create the globe bounding box
 globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
@@ -70,28 +77,8 @@ globe_border <- st_polygon(list(globe_bbox)) %>%
   smoothr::densify(max_distance = 0.5) %>%
   st_transform(crs = mcbryde_thomas_2)
 
-# Create the plot
-ggplot() +
-  # Add points for each planning unit, colored by priority
-  geom_sf(data = data_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  # Add the world map with a light gray fill
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
-  # Add the black outline around the globe
-  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +  # Add the globe border
-  # Use a white to yellow to blue color gradient
-  scale_color_gradientn(
-    colors = c("white", "yellow", "darkblue"),
-    values = c(0, 0.5, 1),
-    name = "Priority",
-    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
-                           title.position = "top", title.hjust = 0.5)
-  ) +
-  # Add labels and title
-  labs(title = "Global Distribution of Conservation Priorities",
-       subtitle = "Index: FUSE, Budget: 0.3, Replicates: 10",
-       x = NULL, y = NULL) +
-  # Adjust theme
-  theme_minimal() +
+# Create base theme
+my_theme <- theme_minimal() +
   theme(
     legend.position = "bottom",
     legend.direction = "horizontal",
@@ -102,6 +89,66 @@ ggplot() +
     plot.background = element_rect(fill = "white", color = NA),
     panel.grid = element_blank()
   )
+
+# 1. Continental Waters Plot
+continental_plot <- ggplot() +
+  geom_sf(data = continental_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Conservation Priorities in Continental Waters",
+       subtitle = "Index: FUSE, Budget: 0.3, Replicates: 10",
+       x = NULL, y = NULL) +
+  my_theme
+
+# 2. High Seas Plot
+high_seas_plot <- ggplot() +
+  geom_sf(data = high_seas_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Conservation Priorities in High Seas",
+       subtitle = "Index: FUSE, Budget: 0.3, Replicates: 10",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Combined Plot (modified)
+combined_plot <- ggplot() +
+  geom_sf(data = combined_sf, 
+          aes(color = Priority), 
+          size = 0.5, 
+          alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Combined Conservation Priorities",
+       subtitle = "Continental Waters and High Seas\nIndex: FUSE, Budget: 0.3, Replicates: 10",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display all three plots
+#library(patchwork)
+continental_plot 
+high_seas_plot 
+combined_plot
 
 # Protection fraction summary
 # Read the data
@@ -162,4 +209,190 @@ grid_plot <- grid.arrange(
   widths = c(1, 1),
   heights = c(1, 1)
 )
+
+#High seas waters
+# Protection fraction summary for high seas
+# Read the data
+prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_highseas.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
+
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
+
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
+
+# Create a mapping between species and their FUSE values
+species_FUSE_map <- data.frame(
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
+)
+
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
+
+# Create histogram for Mean_Protect_Fraction
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Mean Protect Fraction (High Seas)",
+       x = "Mean Protect Fraction",
+       y = "Count")
+
+# Create histogram for FUSE
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of FUSE Scores (High Seas)",
+       x = "FUSE Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction (High Seas)",
+       x = "FUSE Score",
+       y = "Mean Protect Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_fuse, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+#Now combine both and weigth by range size
+library(tidyverse)
+library(gridExtra)
+library(jsonlite)
+library(here)
+
+# Load all required data
+continental_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_continental.rds"))
+highseas_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_highseas.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+continental_sp_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+highseas_sp_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
+
+# Calculate continental range sizes
+continental_ranges <- continental_sp_data %>%
+  group_by(species_name) %>%
+  summarise(continental_range = n())
+
+# Calculate high seas range sizes
+highseas_ranges <- highseas_sp_data %>%
+  group_by(species_name) %>%
+  summarise(highseas_range = n())
+
+# Get species lists
+continental_species <- sort(unique(continental_sp_data$species_name))
+highseas_species <- sort(unique(highseas_sp_data$species_name))
+
+# Create species-FUSE mapping
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
+species_FUSE_map <- data.frame(
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
+)
+
+# Add species names to continental data
+filtered_continental_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% continental_species, ]
+continental_prot_frac$Species <- filtered_continental_FUSE$Species
+
+# Add species names to highseas data
+filtered_highseas_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% highseas_species, ]
+highseas_prot_frac$Species <- filtered_highseas_FUSE$Species
+
+# Combine the protection fractions with range sizes
+combined_protection <- full_join(
+  continental_prot_frac %>% 
+    select(Species, Mean_Protect_Fraction) %>%
+    rename(continental_protection = Mean_Protect_Fraction),
+  highseas_prot_frac %>% 
+    select(Species, Mean_Protect_Fraction) %>%
+    rename(highseas_protection = Mean_Protect_Fraction),
+  by = "Species"
+) %>%
+  # Join with the range sizes
+  left_join(continental_ranges, by = c("Species" = "species_name")) %>%
+  left_join(highseas_ranges, by = c("Species" = "species_name"))
+
+# Calculate weighted protection
+combined_protection <- combined_protection %>%
+  mutate(
+    # Replace NA with 0 for protection values and ranges
+    continental_protection = replace_na(continental_protection, 0),
+    highseas_protection = replace_na(highseas_protection, 0),
+    continental_range = replace_na(continental_range, 0),
+    highseas_range = replace_na(highseas_range, 0),
+    # Calculate total range
+    total_range = continental_range + highseas_range,
+    # Calculate weighted protection
+    weighted_protection = (continental_protection * continental_range + 
+                         highseas_protection * highseas_range) / 
+                         total_range
+  )
+
+# Add FUSE scores
+combined_protection <- left_join(combined_protection, species_FUSE_map, by = "Species")
+
+# Print summary statistics to verify
+print("Summary of the data:")
+summary(combined_protection)
+
+# Create visualizations
+hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Range-Weighted Protection Fraction",
+       x = "Weighted Protection Fraction",
+       y = "Count")
+
+hist_fuse <- ggplot(combined_protection, aes(x = FUSE)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of FUSE Scores",
+       x = "FUSE Score",
+       y = "Count")
+
+scatter_plot <- ggplot(combined_protection, aes(x = FUSE, y = weighted_protection)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: FUSE vs Weighted Protection Fraction",
+       x = "FUSE Score",
+       y = "Weighted Protection Fraction")
+
+# Print additional summary information
+print("\nNumber of species by range type:")
+print(combined_protection %>%
+  summarise(
+    total_species = n(),
+    continental_only = sum(highseas_range == 0 & continental_range > 0),
+    highseas_only = sum(continental_range == 0 & highseas_range > 0),
+    both_ranges = sum(continental_range > 0 & highseas_range > 0)
+  ))
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_fuse, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the combined protection data
+saveRDS(combined_protection, file = here::here("Data", "combined_protection_analysis.rds"))
 ```
