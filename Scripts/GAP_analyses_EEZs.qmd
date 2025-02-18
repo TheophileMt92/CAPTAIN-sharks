@@ -97,9 +97,11 @@ results <- results[order(-results$percentage_in_ALL_MPA), ]
 # Summary statistics
 cat("\nSummary Statistics for ALL MPAs:\n")
 print(summary(results$percentage_in_ALL_MPA))
+print(sd(results$percentage_in_ALL_MPA))
 
 cat("\nSummary Statistics for No-Take MPAs:\n")
 print(summary(results$percentage_in_NT_MPA))
+print(sd(results$percentage_in_NT_MPA))
 
 # Save results to CSV
 #write.csv(results, "species_mpa_coverage_ALL_and_NT.csv", row.names = FALSE)
@@ -324,9 +326,6 @@ comparison_NT <- compare_coverage(actual_long, random_NT, "NT")
 library(knitr)
 library(kableExtra)
 
-library(knitr)
-library(kableExtra)
-
 summarize_results <- function(comparison_data, mpa_type) {
   over_represented <- mean(comparison_data$difference > 0, na.rm=TRUE) * 100
   under_represented <- mean(comparison_data$difference < 0, na.rm=TRUE) * 100
@@ -353,11 +352,6 @@ summarize_results(comparison_NT, "No-Take")
 
 # Identify significantly over/under-represented species
 library(dplyr)
-library(knitr)
-library(kableExtra)
-library(dplyr)
-library(knitr)
-library(kableExtra)
 
 significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
   over_represented <- comparison_data %>% 
@@ -454,7 +448,7 @@ library(sf)
 land <- ne_countries(scale = "medium", returnclass = "sf")
 
 # Step 2: Plot the mean SES with a diverging color scale
-g_ses = ggplot() +
+g_ses_1 = ggplot() +
   geom_tile(data = mean_ses_per_cell, aes(x = lon, y = lat, fill = mean_SES)) +
   geom_sf(data = land, fill = "darkgrey", color = NA) +  # Add land in dark grey
   scale_fill_gradient2(
@@ -479,7 +473,7 @@ g_ses = ggplot() +
        x = "Longitude",
        y = "Latitude",
        fill = "Mean SES")
-print(g_ses)
+print(g_ses_1)
 
 #For No-take MPAs 
 difference_sp=comparison_NT[,c(1,3,6)]
@@ -514,7 +508,7 @@ library(sf)
 land <- ne_countries(scale = "medium", returnclass = "sf")
 
 # Step 2: Plot the mean SES with a diverging color scale
-g_ses = ggplot() +
+g_ses_2 = ggplot() +
   geom_tile(data = mean_ses_per_cell, aes(x = lon, y = lat, fill = mean_SES)) +
   geom_sf(data = land, fill = "darkgrey", color = NA) +  # Add land in dark grey
   scale_fill_gradient2(
@@ -539,7 +533,22 @@ g_ses = ggplot() +
        x = "Longitude",
        y = "Latitude",
        fill = "Mean SES")
-print(g_ses)
+print(g_ses_2)
+
+# Load the patchwork library for combining plots
+library(patchwork)
+
+# Combine the plots side by side
+combined_plots <- g_ses_1 + g_ses_2
+
+# Save the combined plot
+# Adjust width and height as needed for your desired output
+ggsave(here::here("SES_maps_comparison.png"), 
+       combined_plots,
+       width = 16,  # Width in inches
+       height = 8,  # Height in inches
+       dpi = 300)   # Resolution
+
 ```
 
 **Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs. 
