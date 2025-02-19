@@ -42,8 +42,8 @@ library(here)
 ### Budget: 0.3 
 ```{r}
 # Read both RDS files from the Data folder
-continental_data <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
-high_seas_data <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+continental_data_FUSE_03 <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+high_seas_data_FUSE_03 <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.3_replicates10.rds"))
 
 # Get world map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -52,20 +52,20 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 mcbryde_thomas_2 <- "+proj=mbt_s"
 
 # Transform both datasets to sf objects and project
-continental_sf <- st_as_sf(continental_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+continental_sf_FUSE_03 <- st_as_sf(continental_data_FUSE_03, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
-high_seas_sf <- st_as_sf(high_seas_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+high_seas_sf_FUSE_03 <- st_as_sf(high_seas_data_FUSE_03, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
 # Combine the datasets
-combined_sf <- rbind(
-  mutate(continental_sf, Region = "Continental Waters"),
-  mutate(high_seas_sf, Region = "High Seas")
+combined_sf_FUSE_03 <- rbind(
+  mutate(continental_sf_FUSE_03, Region = "Continental Waters"),
+  mutate(high_seas_sf_FUSE_03, Region = "High Seas")
 )
 
 # Project the world map
-world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+world_projected_FUSE_03 <- st_transform(world, crs = mcbryde_thomas_2)
 
 # Create the globe bounding box
 globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
@@ -92,9 +92,9 @@ my_theme <- theme_minimal() +
   )
 
 # 1. Continental Waters Plot
-continental_plot <- ggplot() +
-  geom_sf(data = continental_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+continental_plot_FUSE_03 <- ggplot() +
+  geom_sf(data = continental_sf_FUSE_03, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -109,9 +109,9 @@ continental_plot <- ggplot() +
   my_theme
 
 # 2. High Seas Plot
-high_seas_plot <- ggplot() +
-  geom_sf(data = high_seas_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+high_seas_plot_FUSE_03 <- ggplot() +
+  geom_sf(data = high_seas_sf_FUSE_03, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -126,12 +126,12 @@ high_seas_plot <- ggplot() +
   my_theme
 
 # Combined Plot (modified)
-combined_plot <- ggplot() +
-  geom_sf(data = combined_sf, 
+combined_plot_FUSE_03 <- ggplot() +
+  geom_sf(data = combined_sf_FUSE_03, 
           aes(color = Priority), 
           size = 0.5, 
           alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = world_projected_FUSE_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -147,16 +147,17 @@ combined_plot <- ggplot() +
 
 # Display all three plots
 #library(patchwork)
-continental_plot 
-high_seas_plot 
-combined_plot
+continental_plot_FUSE_03 
+high_seas_plot_FUSE_03 
+combined_plot_FUSE_03
 ```
 
 ### Budget: 0.1 
 ```{r}
 # Read both RDS files from the Data folder
-continental_data <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
-high_seas_data <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+continental_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+high_seas_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.1_replicates10.rds"))
 
 # Get world map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -165,20 +166,20 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 mcbryde_thomas_2 <- "+proj=mbt_s"
 
 # Transform both datasets to sf objects and project
-continental_sf <- st_as_sf(continental_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+continental_sf_FUSE_01 <- st_as_sf(continental_data_FUSE_01, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
-high_seas_sf <- st_as_sf(high_seas_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+high_seas_sf_FUSE_01 <- st_as_sf(high_seas_data_FUSE_01, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
 # Combine the datasets
-combined_sf <- rbind(
-  mutate(continental_sf, Region = "Continental Waters"),
-  mutate(high_seas_sf, Region = "High Seas")
+combined_sf_FUSE_01 <- rbind(
+  mutate(continental_sf_FUSE_01, Region = "Continental Waters"),
+  mutate(high_seas_sf_FUSE_01, Region = "High Seas")
 )
 
 # Project the world map
-world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+world_projected_FUSE_01 <- st_transform(world, crs = mcbryde_thomas_2)
 
 # Create the globe bounding box
 globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
@@ -205,9 +206,9 @@ my_theme <- theme_minimal() +
   )
 
 # 1. Continental Waters Plot
-continental_plot <- ggplot() +
-  geom_sf(data = continental_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+continental_plot_FUSE_01 <- ggplot() +
+  geom_sf(data = continental_sf_FUSE_01, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -222,9 +223,9 @@ continental_plot <- ggplot() +
   my_theme
 
 # 2. High Seas Plot
-high_seas_plot <- ggplot() +
-  geom_sf(data = high_seas_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+high_seas_plot_FUSE_01 <- ggplot() +
+  geom_sf(data = high_seas_sf_FUSE_01, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -239,12 +240,12 @@ high_seas_plot <- ggplot() +
   my_theme
 
 # Combined Plot (modified)
-combined_plot <- ggplot() +
-  geom_sf(data = combined_sf, 
+combined_plot_FUSE_01 <- ggplot() +
+  geom_sf(data = combined_sf_FUSE_01, 
           aes(color = Priority), 
           size = 0.5, 
           alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = world_projected_FUSE_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -260,9 +261,9 @@ combined_plot <- ggplot() +
 
 # Display all three plots
 #library(patchwork)
-continental_plot 
-high_seas_plot 
-combined_plot
+continental_plot_FUSE_01 
+high_seas_plot_FUSE_01 
+combined_plot_FUSE_01
 ```
 
 ## EDGE2 : conservation prioritiy maps
@@ -271,8 +272,9 @@ combined_plot
 
 ```{r}
 # Read both RDS files from the Data folder
-continental_data <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
-high_seas_data <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+continental_data_EDGE2_03 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
+
+high_seas_data_EDGE2_03 <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.3_replicates10.rds"))
 
 # Get world map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -281,20 +283,20 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 mcbryde_thomas_2 <- "+proj=mbt_s"
 
 # Transform both datasets to sf objects and project
-continental_sf <- st_as_sf(continental_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+continental_sf_EDGE2_03 <- st_as_sf(continental_data_EDGE2_03, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
-high_seas_sf <- st_as_sf(high_seas_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+high_seas_sf_EDGE2_03 <- st_as_sf(high_seas_data_EDGE2_03, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
 # Combine the datasets
-combined_sf <- rbind(
-  mutate(continental_sf, Region = "Continental Waters"),
-  mutate(high_seas_sf, Region = "High Seas")
+combined_sf_EDGE2_03 <- rbind(
+  mutate(continental_sf_EDGE2_03, Region = "Continental Waters"),
+  mutate(high_seas_sf_EDGE2_03, Region = "High Seas")
 )
 
 # Project the world map
-world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+world_projected_EDGE2_03 <- st_transform(world, crs = mcbryde_thomas_2)
 
 # Create the globe bounding box
 globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
@@ -321,9 +323,9 @@ my_theme <- theme_minimal() +
   )
 
 # 1. Continental Waters Plot
-continental_plot <- ggplot() +
-  geom_sf(data = continental_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+continental_plot_EDGE2_03 <- ggplot() +
+  geom_sf(data = continental_sf_EDGE2_03, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_EDGE2_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -338,9 +340,9 @@ continental_plot <- ggplot() +
   my_theme
 
 # 2. High Seas Plot
-high_seas_plot <- ggplot() +
-  geom_sf(data = high_seas_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+high_seas_plot_EDGE2_03 <- ggplot() +
+  geom_sf(data = high_seas_sf_EDGE2_03, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_EDGE2_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -355,12 +357,12 @@ high_seas_plot <- ggplot() +
   my_theme
 
 # Combined Plot (modified)
-combined_plot <- ggplot() +
-  geom_sf(data = combined_sf, 
+combined_plot_EDGE2_03 <- ggplot() +
+  geom_sf(data = combined_sf_EDGE2_03, 
           aes(color = Priority), 
           size = 0.5, 
           alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = world_projected_EDGE2_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -376,17 +378,18 @@ combined_plot <- ggplot() +
 
 # Display all three plots
 #library(patchwork)
-continental_plot 
-high_seas_plot 
-combined_plot
+continental_plot_EDGE2_03 
+high_seas_plot_EDGE2_03 
+combined_plot_EDGE2_03
 ```
 
 ### Budget: 0.1
 
 ```{r}
 # Read both RDS files from the Data folder
-continental_data <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
-high_seas_data <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+continental_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+high_seas_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.1_replicates10.rds"))
 
 # Get world map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -395,20 +398,20 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 mcbryde_thomas_2 <- "+proj=mbt_s"
 
 # Transform both datasets to sf objects and project
-continental_sf <- st_as_sf(continental_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+continental_sf_EDGE2_01 <- st_as_sf(continental_data_EDGE2_01, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
-high_seas_sf <- st_as_sf(high_seas_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+high_seas_sf_EDGE2_01 <- st_as_sf(high_seas_data_EDGE2_01, coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform(crs = mcbryde_thomas_2)
 
 # Combine the datasets
-combined_sf <- rbind(
-  mutate(continental_sf, Region = "Continental Waters"),
-  mutate(high_seas_sf, Region = "High Seas")
+combined_sf_EDGE2_01 <- rbind(
+  mutate(continental_sf_EDGE2_01, Region = "Continental Waters"),
+  mutate(high_seas_sf_EDGE2_01, Region = "High Seas")
 )
 
 # Project the world map
-world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+world_projected_EDGE2_01 <- st_transform(world, crs = mcbryde_thomas_2)
 
 # Create the globe bounding box
 globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
@@ -435,9 +438,9 @@ my_theme <- theme_minimal() +
   )
 
 # 1. Continental Waters Plot
-continental_plot <- ggplot() +
-  geom_sf(data = continental_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+continental_plot_EDGE2_01 <- ggplot() +
+  geom_sf(data = continental_sf_EDGE2_01, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_EDGE2_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -452,9 +455,9 @@ continental_plot <- ggplot() +
   my_theme
 
 # 2. High Seas Plot
-high_seas_plot <- ggplot() +
-  geom_sf(data = high_seas_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+high_seas_plot_EDGE2_01 <- ggplot() +
+  geom_sf(data = high_seas_sf_EDGE2_01, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_EDGE2_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -469,12 +472,12 @@ high_seas_plot <- ggplot() +
   my_theme
 
 # Combined Plot (modified)
-combined_plot <- ggplot() +
-  geom_sf(data = combined_sf, 
+combined_plot_EDGE2_01 <- ggplot() +
+  geom_sf(data = combined_sf_EDGE2_01, 
           aes(color = Priority), 
           size = 0.5, 
           alpha = 0.7) +
-  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = world_projected_EDGE2_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
@@ -490,9 +493,171 @@ combined_plot <- ggplot() +
 
 # Display all three plots
 #library(patchwork)
-continental_plot 
-high_seas_plot 
-combined_plot
+continental_plot_EDGE2_01 
+high_seas_plot_EDGE2_01 
+combined_plot_EDGE2_01
+```
+
+## Congruence tests 
+
+### Budget: 0.1
+```{r}
+
+# Spearman's rank correlation 
+# Calculate correlation between FUSE and EDGE2 priorities
+congruence_FUSE_EDGE2_01 <- cor.test(combined_sf_FUSE_01$Priority, 
+                                    combined_sf_EDGE2_01$Priority, 
+                                    method = "spearman")
+
+# Create a scatterplot to visualize the relationship
+congruence_plot_01 <- ggplot(data.frame(
+  FUSE = combined_sf_FUSE_01$Priority,
+  EDGE2 = combined_sf_EDGE2_01$Priority
+), aes(x = FUSE, y = EDGE2)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(
+    title = "Congruence between FUSE and EDGE2 Priorities",
+    subtitle = paste("Spearman's rho =", 
+                    round(congruence_FUSE_EDGE2_01$estimate, 3),
+                    "\np-value <", 
+                    format.pval(congruence_FUSE_EDGE2_01$p.value, digits = 3)),
+    x = "FUSE Priority (Budget = 0.1)",
+    y = "EDGE2 Priority (Budget = 0.1)"
+  ) +
+  theme_minimal()
+
+# Display results
+print(congruence_FUSE_EDGE2_01)
+congruence_plot_01
+
+# Ovelaps test 
+# Create binary maps of high priority areas (≥ 0.8)
+high_priority_FUSE_01 <- combined_sf_FUSE_01$Priority >= 0.8
+high_priority_EDGE2_01 <- combined_sf_EDGE2_01$Priority >= 0.8
+
+# Calculate overlaps
+total_high_FUSE <- sum(high_priority_FUSE_01)
+total_high_EDGE2 <- sum(high_priority_EDGE2_01)
+overlap_areas <- sum(high_priority_FUSE_01 & high_priority_EDGE2_01)
+
+# Calculate percentages
+percent_overlap_FUSE <- (overlap_areas / total_high_FUSE) * 100
+percent_overlap_EDGE2 <- (overlap_areas / total_high_EDGE2) * 100
+
+# Print results
+cat("Number of high-priority cells:\n",
+    "FUSE:", total_high_FUSE, "\n",
+    "EDGE2:", total_high_EDGE2, "\n",
+    "Overlap:", overlap_areas, "\n\n",
+    "Percentage of FUSE high-priority areas that overlap with EDGE2:", round(percent_overlap_FUSE, 1), "%\n",
+    "Percentage of EDGE2 high-priority areas that overlap with FUSE:", round(percent_overlap_EDGE2, 1), "%\n")
+
+# Function to calculate hotspot overlaps with significance testing using absolute threshold
+calculate_priority_overlap <- function(index1, index2, threshold = 0.8, n_permutations = 999) {
+  # Identify high priority areas (>= threshold)
+  priority1 <- index1$Priority >= threshold
+  priority2 <- index2$Priority >= threshold
+  
+  # Calculate observed overlap
+  Ni <- sum(priority1)  # Number of high priority areas in index1
+  Nj <- sum(priority2)  # Number of high priority areas in index2
+  NT <- length(priority1)  # Total number of cells
+  
+  Oo <- sum(priority1 & priority2)  # Observed overlap
+  Oe <- (Ni * Nj) / NT  # Expected overlap under independence
+  
+  # Randomization procedure
+  random_overlaps <- numeric(n_permutations)
+  for(i in 1:n_permutations) {
+    random_priority2 <- sample(priority2)  # Randomly permute second index
+    random_overlaps[i] <- sum(priority1 & random_priority2)
+  }
+  
+  # Calculate p-value
+  if(Oo > Oe) {
+    p_value <- sum(random_overlaps >= Oo) / n_permutations
+  } else {
+    p_value <- sum(random_overlaps <= Oo) / n_permutations
+  }
+  
+  # Calculate percentage of observed overlap
+  percent_overlap <- (Oo / min(Ni, Nj)) * 100
+  
+  return(list(
+    observed_overlap = Oo,
+    expected_overlap = Oe,
+    total_priority_index1 = Ni,
+    total_priority_index2 = Nj,
+    percent_overlap = percent_overlap,
+    p_value = p_value
+  ))
+}
+
+# Run the analysis for 0.1 budget level with 0.8 threshold
+results_01 <- calculate_priority_overlap(
+  combined_sf_FUSE_01,
+  combined_sf_EDGE2_01,
+  threshold = 0.9
+)
+
+# Print results
+cat("Results for 0.1 budget level (Priority >= 0.8):\n",
+    "\nNumber of high priority areas:",
+    "\nFUSE:", results_01$total_priority_index1,
+    "\nEDGE2:", results_01$total_priority_index2,
+    "\n\nOverlap analysis:",
+    "\nObserved overlap:", results_01$observed_overlap,
+    "\nExpected overlap:", round(results_01$expected_overlap, 2),
+    "\nPercentage overlap:", round(results_01$percent_overlap, 1), "%",
+    "\np-value:", format.pval(results_01$p_value, digits = 3))
+```
+
+### Budget: 0.3
+```{r}
+# Calculate correlation between FUSE and EDGE2 priorities at 0.3 budget
+congruence_FUSE_EDGE2_03 <- cor.test(combined_sf_FUSE_03$Priority, 
+                                    combined_sf_EDGE2_03$Priority, 
+                                    method = "spearman")
+
+# Create a scatterplot to visualize the relationship
+congruence_plot_03 <- ggplot(data.frame(
+  FUSE = combined_sf_FUSE_03$Priority,
+  EDGE2 = combined_sf_EDGE2_03$Priority
+), aes(x = FUSE, y = EDGE2)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(
+    title = "Congruence between FUSE and EDGE2 Priorities",
+    subtitle = paste("Spearman's rho =", 
+                    round(congruence_FUSE_EDGE2_03$estimate, 3),
+                    "\np-value <", 
+                    format.pval(congruence_FUSE_EDGE2_03$p.value, digits = 3)),
+    x = "FUSE Priority (Budget = 0.3)",
+    y = "EDGE2 Priority (Budget = 0.3)"
+  ) +
+  theme_minimal()
+
+# Display results
+print(congruence_FUSE_EDGE2_03)
+congruence_plot_03
+
+# Calculate priority overlap 
+results_03 <- calculate_priority_overlap(
+  combined_sf_FUSE_03,
+  combined_sf_EDGE2_03,
+  threshold = 0.9
+)
+# Print results
+cat("Results for 0.3 budget level (Priority >= 0.8):\n",
+    "\nNumber of high priority areas:",
+    "\nFUSE:", results_03$total_priority_index1,
+    "\nEDGE2:", results_03$total_priority_index2,
+    "\n\nOverlap analysis:",
+    "\nObserved overlap:", results_03$observed_overlap,
+    "\nExpected overlap:", round(results_03$expected_overlap, 2),
+    "\nPercentage overlap:", round(results_03$percent_overlap, 1), "%",
+    "\np-value:", format.pval(results_03$p_value, digits = 3))
 ```
 
 ## FUSE and EDGE2 : conservation prioritiy bivariate maps
@@ -588,6 +753,21 @@ legend_plot <- bi_legend(pal = map_pal, dim = 4,
 continental_bivariate <- create_bivariate_plot(continental_sf, "Continental Waters: EDGE2 vs FUSE Priorities")
 highseas_bivariate <- create_bivariate_plot(highseas_sf, "High Seas: EDGE2 vs FUSE Priorities")
 combined_bivariate_03 <- create_bivariate_plot(combined_sf, "Combined Waters: EDGE2 vs FUSE Priorities; Budget: 0.3")
+
+# Create the map for the ms
+# Modify the create_bivariate_plot function for this specific case
+combined_bivariate_03_ms <- ggplot() +
+    geom_sf(data = combined_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    annotate("text", x = -Inf, y = Inf, label = "(B)", 
+             hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"))
 
 # Arrange plots with shared legend
 layout <- rbind(
@@ -721,6 +901,21 @@ continental_bivariate <- create_bivariate_plot(continental_sf, "Continental Wate
 highseas_bivariate <- create_bivariate_plot(highseas_sf, "High Seas: EDGE2 vs FUSE Priorities")
 combined_bivariate_01 <- create_bivariate_plot(combined_sf, "Combined Waters: EDGE2 vs FUSE Priorities; Budget: 0.1")
 
+#Map for the manuscript 
+# Modify the create_bivariate_plot function for this specific case
+combined_bivariate_01_ms <- ggplot() +
+    geom_sf(data = combined_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    annotate("text", x = -Inf, y = Inf, label = "(A)", 
+             hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"))
+
 # Arrange plots with shared legend
 layout <- rbind(
   c(1, 1, 1),
@@ -771,20 +966,44 @@ layout <- rbind(
 )
 
 combined_plot <- grid.arrange(
-  combined_bivariate_01,
-  combined_bivariate_03,
+  combined_bivariate_01_ms,
+  combined_bivariate_03_ms,
   legend_plot,
   layout_matrix = layout,
   heights = c(0.32, 0.32, 0.15),
-  widths = unit(c(15, 15, 15), "inches"),
-  top = textGrob("Bivariate Maps of EDGE2 and FUSE Priorities", 
-                 gp = gpar(fontsize = 16, font = 2))
+  widths = unit(c(15, 15, 15), "inches") #,
+ # top = textGrob("Bivariate Maps of EDGE2 and FUSE Priorities", 
+ #                 gp = gpar(fontsize = 16, font = 2))
 )
 
 # TIFF version
-ggsave(here::here("bivariate_maps_comparison.png"), 
+ggsave(here::here("bivariate_maps_comparison_ms.png"), 
        combined_plot,
        width = 10, 
+       height = 12, 
+       dpi = 300,
+       bg = "white")
+
+#Suplementary figure:
+layout <- rbind(
+  c(1, 2),
+  c(3, 4)
+)
+
+combined_plot <- grid.arrange(
+  combined_plot_FUSE_01,
+  combined_plot_FUSE_03,
+  combined_plot_EDGE2_01,
+  combined_plot_EDGE2_03,
+  layout_matrix = layout,
+  top = textGrob("Global Conservation Priorities", 
+                 gp = gpar(fontsize = 16, font = 2))
+)
+
+# Save if needed
+ggsave(here::here("priority_maps_grid.png"), 
+       combined_plot,
+       width = 15, 
        height = 12, 
        dpi = 300,
        bg = "white")
