@@ -298,6 +298,7 @@ library(ggplot2)
 # Load actual MPA coverage data
 actual_coverage <- read.csv(here::here("Outputs", "species_mpa_coverage_ALL_and_NT.csv"))
 colnames(actual_coverage)[2:3]=c("ALL","NT")
+
 # Load random MPA coverage results
 random_ALL <- read.csv(here::here("Outputs", "species_random_ALL MPAs_coverage.csv"))
 random_NT <- read.csv(here::here("Outputs", "species_random_No-take MPAs_coverage.csv"))
@@ -552,6 +553,144 @@ ggsave(here::here("SES_maps_comparison.png"),
 ```
 
 **Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs. 
+
+# Maps for the manuscript 
+
+Map Standardised Effect Sizes of MPA coverage with Mcbryde Thomas 2 projection 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(patchwork)
+library(smoothr)
+
+# Step 1: Calculate SES for each species in comparison_ALL
+comparison_ALL <- comparison_ALL %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+# Reshape puvsp_marine to long format
+puvsp_long <- puvsp_marine %>%
+  pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
+  filter(!is.na(presence) & presence == 1)
+
+# Join SES data to puvsp_long
+combined_data <- puvsp_long %>%
+  left_join(comparison_ALL, by = c("species" = "species"))
+
+# Calculate mean SES per cell
+mean_ses_per_cell <- combined_data %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+# Define the projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Convert data to sf object and project
+mean_ses_per_cell_sf <- mean_ses_per_cell %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Get and project land
+land_projected <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Plot for All MPAs (now g_ses_2)
+g_ses_2 = ggplot() +
+  geom_sf(data = mean_ses_per_cell_sf, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(x = NULL, y = NULL) +
+  annotate("text", x = -Inf, y = Inf, label = "(B)", 
+           hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+  my_theme
+
+# Repeat process for No-take MPAs
+comparison_NT <- comparison_NT %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+combined_data_NT <- puvsp_long %>%
+  left_join(comparison_NT, by = c("species" = "species"))
+
+mean_ses_per_cell_NT <- combined_data_NT %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+mean_ses_per_cell_sf_NT <- mean_ses_per_cell_NT %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Plot for No-take MPAs (now g_ses_1)
+g_ses_1 = ggplot() +
+  geom_sf(data = mean_ses_per_cell_sf_NT, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(x = NULL, y = NULL) +
+  annotate("text", x = -Inf, y = Inf, label = "(A)", 
+           hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+  my_theme
+
+# Create layout matrix for two plots in a column
+layout <- matrix(c(1, 2), ncol = 1)
+
+# Combine plots using grid.arrange
+combined_plot <- gridExtra::grid.arrange(
+  g_ses_1,
+  g_ses_2,
+  layout_matrix = layout,
+  heights = unit(c(6, 6), "inches")  # Equal height for both plots
+)
+
+# Save the combined plot
+ggsave(here::here("SES_maps_comparison.png"), 
+       combined_plot,
+       width = 10,    # adjusted for single column
+       height = 12,  # adjusted for two rows
+       dpi = 300,
+       bg = "white")
+```
 
 # Relate to IUCN status
 

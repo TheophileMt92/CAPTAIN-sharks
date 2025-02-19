@@ -782,7 +782,7 @@ combined_plot <- grid.arrange(
 )
 
 # TIFF version
-ggsave(here::here("bivariate_maps_comparison.tiff"), 
+ggsave(here::here("bivariate_maps_comparison.png"), 
        combined_plot,
        width = 10, 
        height = 12, 
