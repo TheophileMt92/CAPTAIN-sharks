@@ -783,12 +783,13 @@ significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significa
 significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
 
 # Calculate y positions for the sorted comparisons
-significant_comparisons$y.position <- seq(max(results_IUCN_filtered$percentage_in_ALL_MPA, na.rm = TRUE) + 5, 
-                                          by = 5, 
-                                          length.out = nrow(significant_comparisons))
+max_y <- max(results_IUCN_filtered$percentage_in_ALL_MPA, na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 5, 
+                                        by = 10, 
+                                        length.out = nrow(significant_comparisons))
 
 # Recreate the base violin plot
-violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_ALL_MPA)) +
+violin_plot_all <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_ALL_MPA)) +
   geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
   geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
@@ -800,7 +801,7 @@ violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels 
   scale_color_manual(values = iucn_colors)
 
 # Add significance bars and labels
-violin_plot_with_significance <- violin_plot +
+violin_plot_with_significance_all <- violin_plot +
   geom_segment(data = significant_comparisons,
                aes(x = x1, xend = x2, y = y.position, yend = y.position),
                inherit.aes = FALSE,
@@ -816,10 +817,10 @@ violin_plot_with_significance <- violin_plot +
   geom_text(data = significant_comparisons,
             aes(x = (x1 + x2) / 2, y = y.position, label = significance),
             inherit.aes = FALSE,
-            vjust = -0.5, size = 3)
+            vjust = -0.2, size = 3)
 
 # Display the updated plot
-print(violin_plot_with_significance)
+print(violin_plot_with_significance_all)
 
 # Save the plot
 #ggsave("violin_plot_with_significance.pdf", violin_plot_with_significance, width = 10, height = 8, units = "in")
@@ -888,7 +889,7 @@ significant_comparisons$y.position <- seq(max(results_IUCN_filtered$percentage_i
                                           length.out = nrow(significant_comparisons))
 
 # Recreate the base violin plot
-violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_NT_MPA)) +
+violin_plot_nt <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = percentage_in_NT_MPA)) +
   geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
   geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
@@ -901,7 +902,7 @@ violin_plot <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels 
   scale_color_manual(values = iucn_colors)
 
 # Add significance bars and labels
-violin_plot_with_significance <- violin_plot +
+violin_plot_with_significance_nt <- violin_plot +
   geom_segment(data = significant_comparisons,
                aes(x = x1, xend = x2, y = y.position, yend = y.position),
                inherit.aes = FALSE,
@@ -920,7 +921,7 @@ violin_plot_with_significance <- violin_plot +
             vjust = -0.5, size = 3)
 
 # Display the updated plot
-print(violin_plot_with_significance)
+print(violin_plot_with_significance_nt)
 
 # Summary statistics
 summary_stats <- results_IUCN_filtered %>%
@@ -935,9 +936,668 @@ summary_stats <- results_IUCN_filtered %>%
 
 print(summary_stats)
 
+# Then combine them using patchwork:
+library(patchwork)
+combined_plot <- violin_plot_with_significance_all + violin_plot_with_significance_nt +
+  plot_annotation(tag_levels = 'A')
+
+# Save the combined plot
+ggsave(here::here("combined_violin_plots.png"), combined_plot, width = 12, height = 6, units = "in")
+
 ```
 
 **Key message:** Least concerned species are significantly more protected by all MPAs than any other IUCN Red List threat status category. We also note a similar relationship (LC vs VU, EN & CR) for no-take MPAs, however, after p-value adjustment for multiple comparison, differences were not significant for no-take MPAs.
+
+## Relate to IUCN status: proposed protection 
+
+### FUSE 0.3 budget 
+```{r}
+
+# FUSE 0.3 budget 
+IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+# Remove underscores from species names
+IUCN$species <- gsub("_", " ", IUCN$Species)
+
+# Join with combined_protection_FUSE_03
+results_IUCN <- left_join(IUCN, combined_protection_FUSE_03, by=c("species" = "species_name"))
+
+library(ggplot2)
+library(dplyr)
+
+# Convert iucn_GE to a factor for better plotting
+results_IUCN$iucn_GE <- as.factor(results_IUCN$iucn_GE)
+
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",  # Red
+  "EN" = "#FC7F3F",  # Orange
+  "VU" = "#FEC748",  # Yellow
+  "NT" = "#58AFFF",  # Light Blue
+  "LC" = "#38AB38"   # Green
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+library(ggplot2)
+library(dplyr)
+library(dunn.test)
+
+# Perform Kruskal-Wallis test with sqrt transformation
+kruskal_result <- kruskal.test(sqrt(weighted_protection) ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons with sqrt transformation and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(sqrt(results_IUCN_filtered$weighted_protection), 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons using sqrt transformation
+max_y <- max(sqrt(results_IUCN_filtered$weighted_protection), na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Create the base violin plot with scale_y_sqrt
+violin_plot_FUSE_03 <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = weighted_protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", 
+       y = "Weighted Protection") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0,1.2))
+
+# Recalculate max_y for significance bars (no need for sqrt here as scale_y_sqrt handles it)
+max_y <- max(results_IUCN_filtered$weighted_protection, na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Add significance bars and labels
+violin_plot_with_significance_FUSE_03 <- violin_plot_FUSE +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.2, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance_FUSE_03)
+
+# Summary statistics with both raw and transformed values
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean_raw = mean(weighted_protection, na.rm = TRUE),
+    median_raw = median(weighted_protection, na.rm = TRUE),
+    sd_raw = sd(weighted_protection, na.rm = TRUE),
+    mean_sqrt = mean(sqrt(weighted_protection), na.rm = TRUE),
+    median_sqrt = median(sqrt(weighted_protection), na.rm = TRUE),
+    sd_sqrt = sd(sqrt(weighted_protection), na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+# Save the results
+saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_FUSE_03.rds"))
+```
+
+### FUSE 0.1 budget 
+```{r}
+# FUSE 0.1 budget 
+IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+# Remove underscores from species names
+IUCN$species <- gsub("_", " ", IUCN$Species)
+
+# Join with combined_protection_FUSE_01
+results_IUCN <- left_join(IUCN, combined_protection_FUSE_01, by=c("species" = "species_name"))
+
+library(ggplot2)
+library(dplyr)
+
+# Convert iucn_GE to a factor for better plotting
+results_IUCN$iucn_GE <- as.factor(results_IUCN$iucn_GE)
+
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",  # Red
+  "EN" = "#FC7F3F",  # Orange
+  "VU" = "#FEC748",  # Yellow
+  "NT" = "#58AFFF",  # Light Blue
+  "LC" = "#38AB38"   # Green
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+library(ggplot2)
+library(dplyr)
+library(dunn.test)
+
+# Perform Kruskal-Wallis test with sqrt transformation
+kruskal_result <- kruskal.test(sqrt(weighted_protection) ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons with sqrt transformation and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(sqrt(results_IUCN_filtered$weighted_protection), 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons using sqrt transformation
+max_y <- max(sqrt(results_IUCN_filtered$weighted_protection), na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Create the base violin plot with scale_y_sqrt
+violin_plot_FUSE_01 <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = weighted_protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", 
+       y = "Weighted Protection") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0,1.2))
+
+# Recalculate max_y for significance bars (no need for sqrt here as scale_y_sqrt handles it)
+max_y <- max(results_IUCN_filtered$weighted_protection, na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Add significance bars and labels
+violin_plot_with_significance_FUSE_01 <- violin_plot_FUSE_01 +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.2, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance_FUSE_01)
+
+# Summary statistics with both raw and transformed values
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean_raw = mean(weighted_protection, na.rm = TRUE),
+    median_raw = median(weighted_protection, na.rm = TRUE),
+    sd_raw = sd(weighted_protection, na.rm = TRUE),
+    mean_sqrt = mean(sqrt(weighted_protection), na.rm = TRUE),
+    median_sqrt = median(sqrt(weighted_protection), na.rm = TRUE),
+    sd_sqrt = sd(sqrt(weighted_protection), na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+# Save the results
+saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_FUSE_01.rds"))
+```
+
+### EDGE 0.3 budget 
+```{r}
+# Read the data
+combined_protection_EDGE_03 <- readRDS(here::here("Data", "combined_protection_EDGE_03.rds"))
+
+# EDGE2 0.3 budget 
+IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+# Remove underscores from species names
+IUCN$species <- gsub("_", " ", IUCN$Species)
+
+# Join with combined_protection_EDGE_03
+results_IUCN <- left_join(IUCN, combined_protection_EDGE_03, by=c("species" = "species_name"))
+
+library(ggplot2)
+library(dplyr)
+
+# Convert iucn_GE to a factor for better plotting
+results_IUCN$iucn_GE <- as.factor(results_IUCN$iucn_GE)
+
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",  # Red
+  "EN" = "#FC7F3F",  # Orange
+  "VU" = "#FEC748",  # Yellow
+  "NT" = "#58AFFF",  # Light Blue
+  "LC" = "#38AB38"   # Green
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+library(ggplot2)
+library(dplyr)
+library(dunn.test)
+
+# Perform Kruskal-Wallis test with sqrt transformation
+kruskal_result <- kruskal.test(sqrt(weighted_protection) ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons with sqrt transformation and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(sqrt(results_IUCN_filtered$weighted_protection), 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons using sqrt transformation
+max_y <- max(sqrt(results_IUCN_filtered$weighted_protection), na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Create the base violin plot with scale_y_sqrt
+violin_plot_EDGE_03 <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = weighted_protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", 
+       y = "Weighted Protection") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0,1.2))
+
+# Recalculate max_y for significance bars (no need for sqrt here as scale_y_sqrt handles it)
+max_y <- max(results_IUCN_filtered$weighted_protection, na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Add significance bars and labels
+violin_plot_with_significance_EDGE_03 <- violin_plot_EDGE_03 +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.2, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance_EDGE_03)
+
+# Summary statistics with both raw and transformed values
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean_raw = mean(weighted_protection, na.rm = TRUE),
+    median_raw = median(weighted_protection, na.rm = TRUE),
+    sd_raw = sd(weighted_protection, na.rm = TRUE),
+    mean_sqrt = mean(sqrt(weighted_protection), na.rm = TRUE),
+    median_sqrt = median(sqrt(weighted_protection), na.rm = TRUE),
+    sd_sqrt = sd(sqrt(weighted_protection), na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+# Save the results
+saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_EDGE_03.rds"))
+```
+
+### EDGE 0.1 budget 
+```{r}
+# Read the data
+combined_protection_EDGE_01 <- readRDS(here::here("Data", "combined_protection_EDGE_01.rds"))
+
+# EDGE2 0.1 budget 
+IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+# Remove underscores from species names
+IUCN$species <- gsub("_", " ", IUCN$Species)
+
+# Join with combined_protection_EDGE_01
+results_IUCN <- left_join(IUCN, combined_protection_EDGE_01, by=c("species" = "species_name"))
+
+library(ggplot2)
+library(dplyr)
+
+# Convert iucn_GE to a factor for better plotting
+results_IUCN$iucn_GE <- as.factor(results_IUCN$iucn_GE)
+
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",  # Red
+  "EN" = "#FC7F3F",  # Orange
+  "VU" = "#FEC748",  # Yellow
+  "NT" = "#58AFFF",  # Light Blue
+  "LC" = "#38AB38"   # Green
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+library(ggplot2)
+library(dplyr)
+library(dunn.test)
+
+# Perform Kruskal-Wallis test with sqrt transformation
+kruskal_result <- kruskal.test(sqrt(weighted_protection) ~ IUCN_status, data = results_IUCN_filtered)
+
+# Perform Dunn's test for pairwise comparisons with sqrt transformation and capture the output
+invisible(capture.output(
+  dunn_result <- dunn.test(sqrt(results_IUCN_filtered$weighted_protection), 
+                           results_IUCN_filtered$IUCN_status, 
+                           method = "bonferroni")
+))
+
+# Create a function to add significance levels to the plot
+add_significance <- function(p.value) {
+  if(p.value <= 0.001) return("***")
+  else if(p.value <= 0.01) return("**")
+  else if(p.value <= 0.05) return("*")
+  else return("ns")
+}
+
+# Create a data frame with pairwise comparisons and their significance
+significant_comparisons <- data.frame(
+  group1 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 1),
+  group2 = sapply(strsplit(dunn_result$comparisons, " - "), `[`, 2),
+  p.value = dunn_result$P.adjusted,
+  stringsAsFactors = FALSE
+)
+
+# Add significance levels to the data frame
+significant_comparisons$significance <- sapply(significant_comparisons$p.value, add_significance)
+
+# Filter out non-significant comparisons
+significant_comparisons <- significant_comparisons[significant_comparisons$significance != "ns", ]
+
+# Calculate x positions for the significance bars
+iucn_levels <- c("LC", "NT", "VU", "EN", "CR")
+x_positions <- seq_along(iucn_levels)
+names(x_positions) <- iucn_levels
+
+significant_comparisons$x1 <- x_positions[significant_comparisons$group1]
+significant_comparisons$x2 <- x_positions[significant_comparisons$group2]
+
+# Sort comparisons based on the difference between group indices
+significant_comparisons$group_diff <- abs(significant_comparisons$x2 - significant_comparisons$x1)
+significant_comparisons <- significant_comparisons[order(significant_comparisons$group_diff, decreasing = TRUE), ]
+
+# Calculate y positions for the sorted comparisons using sqrt transformation
+max_y <- max(sqrt(results_IUCN_filtered$weighted_protection), na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Create the base violin plot with scale_y_sqrt
+violin_plot_EDGE_01 <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, levels = iucn_order), y = weighted_protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
+  labs(x = "IUCN Status", 
+       y = "Weighted Protection") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0,1.2))
+
+# Recalculate max_y for significance bars (no need for sqrt here as scale_y_sqrt handles it)
+max_y <- max(results_IUCN_filtered$weighted_protection, na.rm = TRUE)
+significant_comparisons$y.position <- seq(max_y + 0.05, 
+                                        by = 0.1, 
+                                        length.out = nrow(significant_comparisons))
+
+# Add significance bars and labels
+violin_plot_with_significance_EDGE_01 <- violin_plot_EDGE_01 +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x2, y = y.position, yend = y.position),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x1, xend = x1, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_segment(data = significant_comparisons,
+               aes(x = x2, xend = x2, y = y.position, yend = y.position - 0.02),
+               inherit.aes = FALSE,
+               color = "black", size = 0.5) +
+  geom_text(data = significant_comparisons,
+            aes(x = (x1 + x2) / 2, y = y.position, label = significance),
+            inherit.aes = FALSE,
+            vjust = -0.2, size = 3)
+
+# Display the updated plot
+print(violin_plot_with_significance_EDGE_01)
+
+# Summary statistics with both raw and transformed values
+summary_stats <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean_raw = mean(weighted_protection, na.rm = TRUE),
+    median_raw = median(weighted_protection, na.rm = TRUE),
+    sd_raw = sd(weighted_protection, na.rm = TRUE),
+    mean_sqrt = mean(sqrt(weighted_protection), na.rm = TRUE),
+    median_sqrt = median(sqrt(weighted_protection), na.rm = TRUE),
+    sd_sqrt = sd(sqrt(weighted_protection), na.rm = TRUE)
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print(summary_stats)
+
+# Save the results
+saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_EDGE_01.rds"))
+```
+
+### Combine six plots in a grid 
+```{r}
+# Then combine them using patchwork:
+library(patchwork)
+combined_plot <- (violin_plot_with_significance_all + violin_plot_with_significance_nt) /
+                 (violin_plot_with_significance_FUSE_01 + violin_plot_with_significance_FUSE_03) /
+                 (violin_plot_with_significance_EDGE_01 + violin_plot_with_significance_EDGE_03) +
+  plot_annotation(tag_levels = 'A')
+
+# Save the combined plot
+ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width = 12, height = 5*3, units = "in")
+
+```
 
 # Relate to species traits
 
@@ -1083,7 +1743,7 @@ library(dplyr)
 
 # Prepare data for GAM
 gam_data <- results_coords %>%
-  select(Species, A1, A2, percentage_in_ALL_MPA) %>%
+  dplyr::select(Species, A1, A2, percentage_in_ALL_MPA) %>%
   filter(!is.na(percentage_in_ALL_MPA))  # Remove any rows with NA in the response variable
 
 # Build GAM

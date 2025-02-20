@@ -808,6 +808,212 @@ combined_plot <- grid.arrange(
 # Save the plot if needed
 # ggsave("bivariate_priority_maps_all.png", combined_plot, width = 15, height = 16, dpi = 300)
 ```
+### Budget: 0.3 with more bins 
+
+```{r, fig.width=15, fig.height=20}
+# Read all RDS files
+edge_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
+edge_highseas <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+fuse_continental <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+fuse_highseas <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+
+# Get world map data and set projection
+world <- ne_countries(scale = "medium", returnclass = "sf")
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Function to process and combine data
+process_data <- function(edge_data, fuse_data) {
+  combined_data <- edge_data %>%
+    rename(EDGE_Priority = Priority) %>%
+    left_join(fuse_data %>% rename(FUSE_Priority = Priority),
+              by = c("Longitude", "Latitude"))
+  
+  # Normalize priorities to 0-1 range
+  combined_data <- combined_data %>%
+    mutate(
+      EDGE_Priority_Norm = (EDGE_Priority - min(EDGE_Priority)) / (max(EDGE_Priority) - min(EDGE_Priority)),
+      FUSE_Priority_Norm = (FUSE_Priority - min(FUSE_Priority)) / (max(FUSE_Priority) - min(FUSE_Priority))
+    )
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process continental and high seas data
+continental_sf <- process_data(edge_continental, fuse_continental)
+highseas_sf <- process_data(edge_highseas, fuse_highseas)
+
+# Combine continental and high seas data for the combined map
+combined_sf <- rbind(continental_sf, highseas_sf)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create custom 8x8 color palette function
+create_custom_bivariate_palette <- function(n = 8) {
+  # Create color gradients
+  purple_colors <- colorRampPalette(c("#f7f7f7", "#af8dc3", "#7b3294"))(n)
+  orange_colors <- colorRampPalette(c("#f7f7f7", "#fdb863", "#e66101"))(n)
+  
+  # Create the matrix
+  pal_matrix <- matrix(NA, nrow = n, ncol = n)
+  
+  # Fill the matrix with color blends
+  for(i in 1:n) {
+    for(j in 1:n) {
+      # Blend the colors
+      color1 <- col2rgb(purple_colors[i])
+      color2 <- col2rgb(orange_colors[j])
+      
+      # Mix the colors with varying weights
+      mixed_color <- rgb(
+        (color1[1] + color2[1])/2,
+        (color1[2] + color2[2])/2,
+        (color1[3] + color2[3])/2,
+        maxColorValue = 255
+      )
+      
+      pal_matrix[i,j] <- mixed_color
+    }
+  }
+  
+  # Apply lightening effect
+  for(i in 1:n) {
+    for(j in 1:n) {
+      light_factor <- (n - i) * 0.1 + (n - j) * 0.1
+      if(i != n || j != n) {  # Don't lighten the darkest corner
+        pal_matrix[i,j] <- colorspace::lighten(pal_matrix[i,j], light_factor)
+      }
+    }
+  }
+  
+  # Set the lightest corner
+  pal_matrix[1,1] <- "#ffffee"
+  
+  # Convert matrix to vector
+  pal_vector <- as.vector(pal_matrix)
+  names(pal_vector) <- paste0("c", 1:(n*n))
+  
+  return(list(
+    palette = pal_vector,
+    matrix = pal_matrix
+  ))
+}
+
+# Create the custom palette
+custom_pal <- create_custom_bivariate_palette(8)
+map_pal <- custom_pal$palette
+map_pal_mtx <- custom_pal$matrix
+
+# Modified color mapping function for 8 bins
+get_color <- function(edge, fuse) {
+    edge_breaks <- seq(0, 1, length.out = 9)  # Creates 8 bins
+    fuse_breaks <- seq(0, 1, length.out = 9)  # Creates 8 bins
+    
+    edge_class <- cut(edge, breaks = edge_breaks, labels = 1:8, include.lowest = TRUE)
+    fuse_class <- cut(fuse, breaks = fuse_breaks, labels = 1:8, include.lowest = TRUE)
+    
+    return(map_pal[(as.numeric(fuse_class)-1)*8 + as.numeric(edge_class)])
+}
+
+# Apply colors to all datasets
+continental_sf$new_color <- mapply(get_color, continental_sf$EDGE_Priority_Norm, continental_sf$FUSE_Priority_Norm)
+highseas_sf$new_color <- mapply(get_color, highseas_sf$EDGE_Priority_Norm, highseas_sf$FUSE_Priority_Norm)
+combined_sf$new_color <- mapply(get_color, combined_sf$EDGE_Priority_Norm, combined_sf$FUSE_Priority_Norm)
+
+# Create plot function
+create_bivariate_plot <- function(data_sf, title) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(title = title,
+         x = NULL, y = NULL) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+# Create the individual plots
+continental_bivariate <- create_bivariate_plot(continental_sf, "Continental Waters: EDGE2 vs FUSE Priorities")
+highseas_bivariate <- create_bivariate_plot(highseas_sf, "High Seas: EDGE2 vs FUSE Priorities")
+combined_bivariate_03 <- create_bivariate_plot(combined_sf, "Combined Waters: EDGE2 vs FUSE Priorities; Budget: 0.3")
+
+# Create the map for the ms
+combined_bivariate_03_ms <- ggplot() +
+    geom_sf(data = combined_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    annotate("text", x = -Inf, y = Inf, label = "(B)", 
+             hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"))
+
+# Create custom legend function for 8x8 grid
+create_custom_legend <- function() {
+    # Create a data frame for the legend
+    legend_data <- expand.grid(
+        x = 1:8,
+        y = 1:8
+    )
+    legend_data$color <- as.vector(map_pal_mtx)
+    
+    # Create the legend plot
+    legend_plot <- ggplot(legend_data, aes(x = x, y = y, fill = color)) +
+        geom_tile() +
+        scale_fill_identity() +
+        labs(x = "EDGE2", y = "FUSE") +
+        theme_minimal() +
+        theme(
+            axis.title = element_text(size = 12, face = "bold"),
+            axis.text = element_blank(),
+            panel.grid = element_blank(),
+            plot.margin = margin(t = 5, r = 5, b = 5, l = 5),
+            aspect.ratio = 1  # Force square aspect ratio
+        ) +
+        coord_fixed()  # Ensure square tiles
+    
+    return(legend_plot)
+}
+
+# Create the legend
+legend_plot <- create_custom_legend()
+
+# Layout for plots with smaller legend
+layout <- rbind(
+    c(1, 1, 1, 1),
+    c(2, 2, 2, 2),
+    c(3, 3, 3, 3),
+    c(NA, 4, 4, NA)  # This centers the legend and makes it smaller
+)
+
+# Arrange plots with shared legend
+combined_plot <- grid.arrange(
+    continental_bivariate,
+    highseas_bivariate,
+    combined_bivariate_03,
+    legend_plot,
+    layout_matrix = layout,
+    heights = c(0.3, 0.3, 0.3, 0.15),
+    widths = c(0.25, 0.25, 0.25, 0.25),
+    top = textGrob("Bivariate Maps of EDGE2 and FUSE Priorities", 
+                   gp = gpar(fontsize = 16, font = 2))
+)
+
+# Display the combined plot
+print(combined_plot)
+
+# Save the plot if needed
+ggsave("bivariate_priority_maps_all_8bins.png", combined_plot, width = 15, height = 16, dpi = 300)
+```
 
 ### Budget: 0.1
 
@@ -1178,12 +1384,13 @@ species_FUSE_map <- data.frame(
 )
 
 # Combine the protection fractions with range sizes
-combined_protection <- full_join(
+library(dplyr)
+combined_protection_FUSE_03 <- full_join(
   continental_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
   by = c("sp", "species_name")
 ) %>%
@@ -1193,7 +1400,7 @@ combined_protection <- full_join(
   left_join(species_FUSE_map, by = c("species_name" = "Species"))
 
 # Calculate weighted protection
-combined_protection <- combined_protection %>%
+combined_protection_FUSE_03 <- combined_protection_FUSE_03 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -1209,11 +1416,11 @@ combined_protection <- combined_protection %>%
   )
 
 # Add FUSE scores
-combined_protection <- left_join(combined_protection, species_FUSE_map, by = c("species_name" = "Species"))
+combined_protection_FUSE_03 <- left_join(combined_protection_FUSE_03, species_FUSE_map, by = c("species_name" = "Species"))
 
 # Create summary statistics
-summary_stats <- combined_protection %>%
-  select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_FUSE_03 %>%
+  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -1248,7 +1455,7 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_FUSE_03, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1256,14 +1463,14 @@ hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_fuse <- ggplot(combined_protection, aes(x = FUSE.x)) +
+hist_fuse <- ggplot(combined_protection_FUSE_03, aes(x = FUSE.x)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores",
        x = "FUSE Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection, aes(x = FUSE.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_FUSE_03, aes(x = FUSE.x, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1272,7 +1479,7 @@ scatter_plot <- ggplot(combined_protection, aes(x = FUSE.x, y = weighted_protect
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection %>%
+range_type_summary <- combined_protection_FUSE_03 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -1304,7 +1511,7 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-#saveRDS(combined_protection, file = here::here("Data", "combined_protection_analysis.rds"))
+saveRDS(combined_protection_FUSE_03, file = here::here("Data", "combined_protection_FUSE_03.rds"))
 ```
 
 ### Budget: 0.1
@@ -1473,12 +1680,12 @@ species_FUSE_map <- data.frame(
 )
 
 # Combine the protection fractions with range sizes
-combined_protection <- full_join(
+combined_protection_FUSE_01 <- full_join(
   continental_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
   by = c("sp", "species_name")
 ) %>%
@@ -1488,7 +1695,7 @@ combined_protection <- full_join(
   left_join(species_FUSE_map, by = c("species_name" = "Species"))
 
 # Calculate weighted protection
-combined_protection <- combined_protection %>%
+combined_protection_FUSE_01 <- combined_protection_FUSE_01 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -1504,11 +1711,11 @@ combined_protection <- combined_protection %>%
   )
 
 # Add FUSE scores
-combined_protection <- left_join(combined_protection, species_FUSE_map, by = c("species_name" = "Species"))
+combined_protection_FUSE_01 <- left_join(combined_protection_FUSE_01, species_FUSE_map, by = c("species_name" = "Species"))
 
 # Create summary statistics
-summary_stats <- combined_protection %>%
-  select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_FUSE_01 %>%
+  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -1543,7 +1750,7 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_FUSE_01, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1551,14 +1758,14 @@ hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_fuse <- ggplot(combined_protection, aes(x = FUSE.x)) +
+hist_fuse <- ggplot(combined_protection_FUSE_01, aes(x = FUSE.x)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores",
        x = "FUSE Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection, aes(x = FUSE.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_FUSE_01, aes(x = FUSE.x, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1567,7 +1774,7 @@ scatter_plot <- ggplot(combined_protection, aes(x = FUSE.x, y = weighted_protect
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection %>%
+range_type_summary <- combined_protection_FUSE_01 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -1599,7 +1806,7 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-#saveRDS(combined_protection, file = here::here("Data", "combined_protection_analysis.rds"))
+saveRDS(combined_protection_FUSE_01, file = here::here("Data", "combined_protection_FUSE_01.rds"))
 ```
 
 ## EDGE2 : species level priorities 
@@ -1770,12 +1977,12 @@ species_EDGE2_map <- data.frame(
 )
 
 # Combine the protection fractions with range sizes
-combined_protection <- full_join(
+combined_protection_EDGE_03 <- full_join(
   continental_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
   by = c("sp", "species_name")
 ) %>%
@@ -1785,7 +1992,7 @@ combined_protection <- full_join(
   left_join(species_EDGE2_map, by = c("species_name" = "Species"))
 
 # Calculate weighted protection
-combined_protection <- combined_protection %>%
+combined_protection_EDGE_03 <- combined_protection_EDGE_03 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -1801,11 +2008,11 @@ combined_protection <- combined_protection %>%
   )
 
 # Add EDGE2 scores
-combined_protection <- left_join(combined_protection, species_EDGE2_map, by = c("species_name" = "Species"))
+combined_protection_EDGE_03 <- left_join(combined_protection_EDGE_03, species_EDGE2_map, by = c("species_name" = "Species"))
 
 # Create summary statistics
-summary_stats <- combined_protection %>%
-  select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_EDGE_03 %>%
+  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -1840,7 +2047,7 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_EDGE_03, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1848,14 +2055,14 @@ hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_EDGE2 <- ggplot(combined_protection, aes(x = EDGE2.x)) +
+hist_EDGE2 <- ggplot(combined_protection_EDGE_03, aes(x = EDGE2.x)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores",
        x = "EDGE2 Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection, aes(x = EDGE2.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_EDGE_03, aes(x = EDGE2.x, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1864,7 +2071,7 @@ scatter_plot <- ggplot(combined_protection, aes(x = EDGE2.x, y = weighted_protec
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection %>%
+range_type_summary <- combined_protection_EDGE_03 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -1896,7 +2103,7 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-#saveRDS(combined_protection, file = here::here("Data", "combined_protection_analysis.rds"))
+saveRDS(combined_protection_EDGE_03, file = here::here("Data", "combined_protection_EDGE_03.rds"))
 ```
 
 ### Budget: 0.1
@@ -2065,12 +2272,12 @@ species_EDGE2_map <- data.frame(
 )
 
 # Combine the protection fractions with range sizes
-combined_protection <- full_join(
+combined_protection_EDGE_01 <- full_join(
   continental_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    select(sp, species_name, Mean_Protect_Fraction) %>%
+    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
   by = c("sp", "species_name")
 ) %>%
@@ -2080,7 +2287,7 @@ combined_protection <- full_join(
   left_join(species_EDGE2_map, by = c("species_name" = "Species"))
 
 # Calculate weighted protection
-combined_protection <- combined_protection %>%
+combined_protection_EDGE_01 <- combined_protection_EDGE_01 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -2096,11 +2303,11 @@ combined_protection <- combined_protection %>%
   )
 
 # Add EDGE2 scores
-combined_protection <- left_join(combined_protection, species_EDGE2_map, by = c("species_name" = "Species"))
+combined_protection_EDGE_01 <- left_join(combined_protection_EDGE_01, species_EDGE2_map, by = c("species_name" = "Species"))
 
 # Create summary statistics
-summary_stats <- combined_protection %>%
-  select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_EDGE_01 %>%
+  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -2135,7 +2342,7 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_EDGE_01, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -2143,14 +2350,14 @@ hist_protect <- ggplot(combined_protection, aes(x = weighted_protection)) +
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_EDGE2 <- ggplot(combined_protection, aes(x = EDGE2.x)) +
+hist_EDGE2 <- ggplot(combined_protection_EDGE_01, aes(x = EDGE2.x)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores",
        x = "EDGE2 Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection, aes(x = EDGE2.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_EDGE_01, aes(x = EDGE2.x, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -2159,7 +2366,7 @@ scatter_plot <- ggplot(combined_protection, aes(x = EDGE2.x, y = weighted_protec
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection %>%
+range_type_summary <- combined_protection_EDGE_01 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -2191,5 +2398,5 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-#saveRDS(combined_protection, file = here::here("Data", "combined_protection_analysis.rds"))
+saveRDS(combined_protection_EDGE_01, file = here::here("Data", "combined_protection_EDGE_01.rds"))
 ```
