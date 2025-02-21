@@ -1226,6 +1226,7 @@ ggsave(here::here("priority_maps_grid.png"),
 prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_continental.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+#sp_in_data <- species_lookup
 
 # First, get unique species mappings
 species_mapping <- sp_in_data %>%
@@ -1286,6 +1287,7 @@ grid_plot <- grid.arrange(
 prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
+#sp_in_data <- global_species_lookup
 
 # First, get unique species mappings
 species_mapping <- sp_in_data %>%
