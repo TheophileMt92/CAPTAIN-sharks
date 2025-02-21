@@ -308,6 +308,20 @@ process_zone_metrics <- function(shark.info, puvsp_zone, zone_name, species_look
 highseas_species <- filter_puvsp_to_metrics(highseas_species, shark.info_complete, global_species_lookup)
 continental_species <- filter_puvsp_to_metrics(continental_species, shark.info_complete, global_species_lookup)
 
+#You've lost ten species, find which ones:
+# Get the species from shark.info_complete
+shark_species <- shark.info_complete$Species
+
+# Get the species from your presence data (excluding the first 3 columns which are id, lon, lat)
+presence_species <- names(highseas_species)[4:ncol(highseas_species)]
+
+# Find species that are in shark.info_complete but not in presence data
+missing_species <- setdiff(shark_species, presence_species)
+
+# Show the missing species
+print("Species with metrics but no presence data:")
+print(missing_species)
+
 # Process for high seas
 highseas_results <- process_zone_metrics(shark.info_complete, 
                                          highseas_species, 
