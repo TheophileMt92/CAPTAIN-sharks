@@ -1226,50 +1226,50 @@ ggsave(here::here("priority_maps_grid.png"),
 prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_continental.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
-#sp_in_data <- species_lookup
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-FUSE mapping using the JSON data
+# Create a mapping between species and their FUSE values
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
 
-# Add FUSE scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Mean Protect Fraction\n(Continental)",
+  labs(title = "Histogram of Mean Protect Fraction",
        x = "Mean Protect Fraction",
        y = "Count")
 
-# Create histogram for FUSE
-hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
+# Create histogram for EDGE2
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
-  labs(title = "Histogram of FUSE Scores\n(Continental)",
+  labs(title = "Histogram of FUSE Scores",
        x = "FUSE Score",
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction (Continental)",
+  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction",
        x = "FUSE Score",
        y = "Mean Protect Fraction")
 
@@ -1287,46 +1287,46 @@ grid_plot <- grid.arrange(
 prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
-#sp_in_data <- global_species_lookup
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-FUSE mapping using the JSON data
+# Create a mapping between species and their FUSE values
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
 
-# Add FUSE scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Mean Protect Fraction\n(High Seas)",
+  labs(title = "Histogram of Mean Protect Fraction (High Seas)",
        x = "Mean Protect Fraction",
        y = "Count")
 
 # Create histogram for FUSE
-hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
-  labs(title = "Histogram of FUSE Scores\n(High Seas)",
+  labs(title = "Histogram of FUSE Scores (High Seas)",
        x = "FUSE Score",
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1348,58 +1348,56 @@ library(gridExtra)
 library(jsonlite)
 library(here)
 
-# For the combined analysis part, modify similarly:
+# Load all required data
 continental_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_continental.rds"))
 highseas_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_03_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 continental_sp_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 highseas_sp_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# Get species mappings for both datasets
-continental_species_mapping <- continental_sp_data %>%
-  distinct(sp, species_name)
-highseas_species_mapping <- highseas_sp_data %>%
-  distinct(sp, species_name)
-
-# Add species names to both datasets
-continental_prot_frac <- continental_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(continental_species_mapping, by = "sp")
-
-highseas_prot_frac <- highseas_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(highseas_species_mapping, by = "sp")
-
-# Calculate range sizes
+# Calculate continental range sizes
 continental_ranges <- continental_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(continental_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(continental_range = n())
 
+# Calculate high seas range sizes
 highseas_ranges <- highseas_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(highseas_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(highseas_range = n())
+
+# Get species lists
+continental_species <- sort(unique(continental_sp_data$species_name))
+highseas_species <- sort(unique(highseas_sp_data$species_name))
 
 # Create species-FUSE mapping
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
 
+# Add species names to continental data
+filtered_continental_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% continental_species, ]
+continental_prot_frac$Species <- filtered_continental_FUSE$Species
+
+# Add species names to highseas data
+filtered_highseas_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% highseas_species, ]
+highseas_prot_frac$Species <- filtered_highseas_FUSE$Species
+
 # Combine the protection fractions with range sizes
-library(dplyr)
 combined_protection_FUSE_03 <- full_join(
   continental_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
-  by = c("sp", "species_name")
+  by = "Species"
 ) %>%
   # Join with the range sizes
-  left_join(continental_ranges, by = c("sp", "species_name")) %>%
-  left_join(highseas_ranges, by = c("sp", "species_name")) %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+  left_join(continental_ranges, by = c("Species" = "species_name")) %>%
+  left_join(highseas_ranges, by = c("Species" = "species_name"))
 
 # Calculate weighted protection
 combined_protection_FUSE_03 <- combined_protection_FUSE_03 %>%
@@ -1418,11 +1416,11 @@ combined_protection_FUSE_03 <- combined_protection_FUSE_03 %>%
   )
 
 # Add FUSE scores
-combined_protection_FUSE_03 <- left_join(combined_protection_FUSE_03, species_FUSE_map, by = c("species_name" = "Species"))
+combined_protection_FUSE_03 <- left_join(combined_protection_FUSE_03, species_FUSE_map, by = "Species")
 
 # Create summary statistics
 summary_stats <- combined_protection_FUSE_03 %>%
-  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
+  select(-Species) %>%  
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -1449,7 +1447,7 @@ summary_table <- flextable(summary_stats) %>%
     q3 = "3rd Quartile",
     max = "Maximum"
   ) %>%
-  colformat_double(digits = 3) %>%  # Format numbers to 3 decimal places
+  colformat_double(digits = 3) %>%
   theme_vanilla() %>%
   autofit()
 
@@ -1461,22 +1459,22 @@ hist_protect <- ggplot(combined_protection_FUSE_03, aes(x = weighted_protection)
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Range-Weighted Protection \nFraction (Combined)",
+  labs(title = "Histogram of Range-Weighted Protection Fraction",
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_fuse <- ggplot(combined_protection_FUSE_03, aes(x = FUSE.x)) +
+hist_fuse <- ggplot(combined_protection_FUSE_03, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores",
        x = "FUSE Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection_FUSE_03, aes(x = FUSE.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_FUSE_03, aes(x = FUSE, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: FUSE vs Weighted Protection Fraction (Combined)",
+  labs(title = "Scatterplot: FUSE vs Weighted Protection Fraction",
        x = "FUSE Score",
        y = "Weighted Protection Fraction")
 
@@ -1525,27 +1523,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_01_continent
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-FUSE mapping using the JSON data
+# Create a mapping between species and their FUSE values
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
 
-# Add FUSE scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1554,7 +1553,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for FUSE
-hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores\n(Continental)",
@@ -1562,7 +1561,7 @@ hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1585,27 +1584,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_01_highseas.
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-FUSE mapping using the JSON data
+# Create a mapping between species and their FUSE values
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
 
-# Add FUSE scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Add Species and FUSE to prot_frac
+prot_frac$Species <- filtered_species_FUSE$Species
+prot_frac$FUSE <- filtered_species_FUSE$FUSE
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1614,7 +1614,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for FUSE
-hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores\n(High Seas)",
@@ -1622,7 +1622,7 @@ hist_fuse <- ggplot(prot_frac_complete, aes(x = FUSE)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1644,57 +1644,56 @@ library(gridExtra)
 library(jsonlite)
 library(here)
 
-# For the combined analysis part, modify similarly:
+# Load all required data
 continental_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_01_continental.rds"))
 highseas_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_01_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 continental_sp_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 highseas_sp_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# Get species mappings for both datasets
-continental_species_mapping <- continental_sp_data %>%
-  distinct(sp, species_name)
-highseas_species_mapping <- highseas_sp_data %>%
-  distinct(sp, species_name)
-
-# Add species names to both datasets
-continental_prot_frac <- continental_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(continental_species_mapping, by = "sp")
-
-highseas_prot_frac <- highseas_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(highseas_species_mapping, by = "sp")
-
-# Calculate range sizes
+# Calculate continental range sizes
 continental_ranges <- continental_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(continental_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(continental_range = n())
 
+# Calculate high seas range sizes
 highseas_ranges <- highseas_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(highseas_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(highseas_range = n())
+
+# Get species lists
+continental_species <- sort(unique(continental_sp_data$species_name))
+highseas_species <- sort(unique(highseas_sp_data$species_name))
 
 # Create species-FUSE mapping
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
 species_FUSE_map <- data.frame(
-  Species = sp$FUSE$info$Species,
-  FUSE = as.numeric(sp$FUSE$info$FUSE)
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
 )
+
+# Add species names to continental data
+filtered_continental_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% continental_species, ]
+continental_prot_frac$Species <- filtered_continental_FUSE$Species
+
+# Add species names to highseas data
+filtered_highseas_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% highseas_species, ]
+highseas_prot_frac$Species <- filtered_highseas_FUSE$Species
 
 # Combine the protection fractions with range sizes
 combined_protection_FUSE_01 <- full_join(
   continental_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
-  by = c("sp", "species_name")
+  by = "Species"
 ) %>%
   # Join with the range sizes
-  left_join(continental_ranges, by = c("sp", "species_name")) %>%
-  left_join(highseas_ranges, by = c("sp", "species_name")) %>%
-  left_join(species_FUSE_map, by = c("species_name" = "Species"))
+  left_join(continental_ranges, by = c("Species" = "species_name")) %>%
+  left_join(highseas_ranges, by = c("Species" = "species_name"))
 
 # Calculate weighted protection
 combined_protection_FUSE_01 <- combined_protection_FUSE_01 %>%
@@ -1713,11 +1712,11 @@ combined_protection_FUSE_01 <- combined_protection_FUSE_01 %>%
   )
 
 # Add FUSE scores
-combined_protection_FUSE_01 <- left_join(combined_protection_FUSE_01, species_FUSE_map, by = c("species_name" = "Species"))
+combined_protection_FUSE_01 <- left_join(combined_protection_FUSE_01, species_FUSE_map, by = "Species")
 
 # Create summary statistics
 summary_stats <- combined_protection_FUSE_01 %>%
-  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
+  select(-Species) %>%  
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -1744,7 +1743,7 @@ summary_table <- flextable(summary_stats) %>%
     q3 = "3rd Quartile",
     max = "Maximum"
   ) %>%
-  colformat_double(digits = 3) %>%  # Format numbers to 3 decimal places
+  colformat_double(digits = 3) %>%
   theme_vanilla() %>%
   autofit()
 
@@ -1756,22 +1755,22 @@ hist_protect <- ggplot(combined_protection_FUSE_01, aes(x = weighted_protection)
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Range-Weighted Protection \nFraction (Combined)",
+  labs(title = "Histogram of Range-Weighted Protection Fraction",
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_fuse <- ggplot(combined_protection_FUSE_01, aes(x = FUSE.x)) +
+hist_fuse <- ggplot(combined_protection_FUSE_01, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores",
        x = "FUSE Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection_FUSE_01, aes(x = FUSE.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_FUSE_01, aes(x = FUSE, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: FUSE vs Weighted Protection Fraction (Combined)",
+  labs(title = "Scatterplot: FUSE vs Weighted Protection Fraction",
        x = "FUSE Score",
        y = "Weighted Protection Fraction")
 
@@ -1822,27 +1821,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_03_continen
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-EDGE2 mapping using the JSON data
+# Create a mapping between species and their EDGE2 values
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
-# Add EDGE2 scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+
+# Add Species and EDGE2 to prot_frac
+prot_frac$Species <- filtered_species_EDGE2$Species
+prot_frac$EDGE2 <- filtered_species_EDGE2$EDGE2
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1851,7 +1851,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for EDGE2
-hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
+hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores\n(Continental)",
@@ -1859,7 +1859,7 @@ hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1882,27 +1882,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_03_highseas
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-EDGE2 mapping using the JSON data
+# Create a mapping between species and their EDGE2 values
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
-# Add EDGE2 scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+
+# Add Species and EDGE2 to prot_frac
+prot_frac$Species <- filtered_species_EDGE2$Species
+prot_frac$EDGE2 <- filtered_species_EDGE2$EDGE2
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -1911,7 +1912,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for EDGE2
-hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
+hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores\n(High Seas)",
@@ -1919,7 +1920,7 @@ hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -1941,60 +1942,59 @@ library(gridExtra)
 library(jsonlite)
 library(here)
 
-# For the combined analysis part, modify similarly:
+# Load all required data
 continental_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_03_continental.rds"))
 highseas_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_03_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 continental_sp_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 highseas_sp_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# Get species mappings for both datasets
-continental_species_mapping <- continental_sp_data %>%
-  distinct(sp, species_name)
-highseas_species_mapping <- highseas_sp_data %>%
-  distinct(sp, species_name)
-
-# Add species names to both datasets
-continental_prot_frac <- continental_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(continental_species_mapping, by = "sp")
-
-highseas_prot_frac <- highseas_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(highseas_species_mapping, by = "sp")
-
-# Calculate range sizes
+# Calculate continental range sizes
 continental_ranges <- continental_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(continental_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(continental_range = n())
 
+# Calculate high seas range sizes
 highseas_ranges <- highseas_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(highseas_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(highseas_range = n())
+
+# Get species lists
+continental_species <- sort(unique(continental_sp_data$species_name))
+highseas_species <- sort(unique(highseas_sp_data$species_name))
 
 # Create species-EDGE2 mapping
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
+# Add species names to continental data
+filtered_continental_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% continental_species, ]
+continental_prot_frac$Species <- filtered_continental_EDGE2$Species
+
+# Add species names to highseas data
+filtered_highseas_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% highseas_species, ]
+highseas_prot_frac$Species <- filtered_highseas_EDGE2$Species
+
 # Combine the protection fractions with range sizes
-combined_protection_EDGE_03 <- full_join(
+combined_protection_EDGE2_03 <- full_join(
   continental_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
-  by = c("sp", "species_name")
+  by = "Species"
 ) %>%
   # Join with the range sizes
-  left_join(continental_ranges, by = c("sp", "species_name")) %>%
-  left_join(highseas_ranges, by = c("sp", "species_name")) %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+  left_join(continental_ranges, by = c("Species" = "species_name")) %>%
+  left_join(highseas_ranges, by = c("Species" = "species_name"))
 
 # Calculate weighted protection
-combined_protection_EDGE_03 <- combined_protection_EDGE_03 %>%
+combined_protection_EDGE2_03 <- combined_protection_EDGE2_03 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -2010,11 +2010,11 @@ combined_protection_EDGE_03 <- combined_protection_EDGE_03 %>%
   )
 
 # Add EDGE2 scores
-combined_protection_EDGE_03 <- left_join(combined_protection_EDGE_03, species_EDGE2_map, by = c("species_name" = "Species"))
+combined_protection_EDGE2_03 <- left_join(combined_protection_EDGE2_03, species_EDGE2_map, by = "Species")
 
 # Create summary statistics
-summary_stats <- combined_protection_EDGE_03 %>%
-  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_EDGE2_03 %>%
+  select(-Species) %>%  
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -2041,7 +2041,7 @@ summary_table <- flextable(summary_stats) %>%
     q3 = "3rd Quartile",
     max = "Maximum"
   ) %>%
-  colformat_double(digits = 3) %>%  # Format numbers to 3 decimal places
+  colformat_double(digits = 3) %>%
   theme_vanilla() %>%
   autofit()
 
@@ -2049,31 +2049,31 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection_EDGE_03, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_EDGE2_03, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Range-Weighted Protection \nFraction (Combined)",
+  labs(title = "Histogram of Range-Weighted Protection Fraction",
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_EDGE2 <- ggplot(combined_protection_EDGE_03, aes(x = EDGE2.x)) +
+hist_EDGE2 <- ggplot(combined_protection_EDGE2_03, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores",
        x = "EDGE2 Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection_EDGE_03, aes(x = EDGE2.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_EDGE2_03, aes(x = EDGE2, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: EDGE2 vs Weighted Protection Fraction (Combined)",
+  labs(title = "Scatterplot: EDGE2 vs Weighted Protection Fraction",
        x = "EDGE2 Score",
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection_EDGE_03 %>%
+range_type_summary <- combined_protection_EDGE2_03 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -2105,7 +2105,7 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-saveRDS(combined_protection_EDGE_03, file = here::here("Data", "combined_protection_EDGE_03.rds"))
+saveRDS(combined_protection_EDGE2_03, file = here::here("Data", "combined_protection_EDGE2_03.rds"))
 ```
 
 ### Budget: 0.1
@@ -2117,27 +2117,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_01_continen
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-EDGE2 mapping using the JSON data
+# Create a mapping between species and their EDGE2 values
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
-# Add EDGE2 scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+
+# Add Species and EDGE2 to prot_frac
+prot_frac$Species <- filtered_species_EDGE2$Species
+prot_frac$EDGE2 <- filtered_species_EDGE2$EDGE2
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -2146,7 +2147,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for EDGE2
-hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
+hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores\n(Continental)",
@@ -2154,7 +2155,7 @@ hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -2177,27 +2178,28 @@ prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_01_highseas
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# First, get unique species mappings
-species_mapping <- sp_in_data %>%
-  distinct(sp, species_name)
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 
-# Merge protection fractions with species names
-prot_frac_with_names <- prot_frac %>%
-  rename(sp = Species_ID) %>%  # rename to match sp_in_data column
-  left_join(species_mapping, by = "sp")
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
 
-# Create species-EDGE2 mapping using the JSON data
+# Create a mapping between species and their EDGE2 values
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
-# Add EDGE2 scores by species name
-prot_frac_complete <- prot_frac_with_names %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+# Filter the mapping to only include species in your data
+filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+
+# Add Species and EDGE2 to prot_frac
+prot_frac$Species <- filtered_species_EDGE2$Species
+prot_frac$EDGE2 <- filtered_species_EDGE2$EDGE2
 
 # Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
@@ -2206,7 +2208,7 @@ hist_protect <- ggplot(prot_frac_complete, aes(x = Mean_Protect_Fraction)) +
        y = "Count")
 
 # Create histogram for EDGE2
-hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
+hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores\n(High Seas)",
@@ -2214,7 +2216,7 @@ hist_EDGE2 <- ggplot(prot_frac_complete, aes(x = EDGE2)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac_complete, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
@@ -2230,66 +2232,64 @@ grid_plot <- grid.arrange(
   heights = c(1, 1)
 )
 
-#Now combine both and weigth by range size
 library(tidyverse)
 library(gridExtra)
 library(jsonlite)
 library(here)
 
-# For the combined analysis part, modify similarly:
+# Load all required data
 continental_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_01_continental.rds"))
 highseas_prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_01_highseas.rds"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 continental_sp_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 highseas_sp_data <- read_csv(here("Data", "highseas_puvsp_harmonised.csv"))
 
-# Get species mappings for both datasets
-continental_species_mapping <- continental_sp_data %>%
-  distinct(sp, species_name)
-highseas_species_mapping <- highseas_sp_data %>%
-  distinct(sp, species_name)
-
-# Add species names to both datasets
-continental_prot_frac <- continental_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(continental_species_mapping, by = "sp")
-
-highseas_prot_frac <- highseas_prot_frac %>%
-  rename(sp = Species_ID) %>%
-  left_join(highseas_species_mapping, by = "sp")
-
-# Calculate range sizes
+# Calculate continental range sizes
 continental_ranges <- continental_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(continental_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(continental_range = n())
 
+# Calculate high seas range sizes
 highseas_ranges <- highseas_sp_data %>%
-  group_by(sp, species_name) %>%
-  summarise(highseas_range = n(), .groups = "drop")
+  group_by(species_name) %>%
+  summarise(highseas_range = n())
+
+# Get species lists
+continental_species <- sort(unique(continental_sp_data$species_name))
+highseas_species <- sort(unique(highseas_sp_data$species_name))
 
 # Create species-EDGE2 mapping
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
 species_EDGE2_map <- data.frame(
-  Species = sp$EDGE2$info$Species,
-  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
 )
 
+# Add species names to continental data
+filtered_continental_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% continental_species, ]
+continental_prot_frac$Species <- filtered_continental_EDGE2$Species
+
+# Add species names to highseas data
+filtered_highseas_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% highseas_species, ]
+highseas_prot_frac$Species <- filtered_highseas_EDGE2$Species
+
 # Combine the protection fractions with range sizes
-combined_protection_EDGE_01 <- full_join(
+combined_protection_EDGE2_01 <- full_join(
   continental_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(continental_protection = Mean_Protect_Fraction),
   highseas_prot_frac %>% 
-    dplyr::select(sp, species_name, Mean_Protect_Fraction) %>%
+    select(Species, Mean_Protect_Fraction) %>%
     rename(highseas_protection = Mean_Protect_Fraction),
-  by = c("sp", "species_name")
+  by = "Species"
 ) %>%
   # Join with the range sizes
-  left_join(continental_ranges, by = c("sp", "species_name")) %>%
-  left_join(highseas_ranges, by = c("sp", "species_name")) %>%
-  left_join(species_EDGE2_map, by = c("species_name" = "Species"))
+  left_join(continental_ranges, by = c("Species" = "species_name")) %>%
+  left_join(highseas_ranges, by = c("Species" = "species_name"))
 
 # Calculate weighted protection
-combined_protection_EDGE_01 <- combined_protection_EDGE_01 %>%
+combined_protection_EDGE2_01 <- combined_protection_EDGE2_01 %>%
   mutate(
     # Replace NA with 0 for protection values and ranges
     continental_protection = replace_na(continental_protection, 0),
@@ -2305,11 +2305,11 @@ combined_protection_EDGE_01 <- combined_protection_EDGE_01 %>%
   )
 
 # Add EDGE2 scores
-combined_protection_EDGE_01 <- left_join(combined_protection_EDGE_01, species_EDGE2_map, by = c("species_name" = "Species"))
+combined_protection_EDGE2_01 <- left_join(combined_protection_EDGE2_01, species_EDGE2_map, by = "Species")
 
 # Create summary statistics
-summary_stats <- combined_protection_EDGE_01 %>%
-  dplyr::select(-species_name) %>%  # Remove the species name column as it's not numerical
+summary_stats <- combined_protection_EDGE2_01 %>%
+  select(-Species) %>%  
   summarise(across(everything(), list(
     min = ~min(., na.rm = TRUE),
     q1 = ~quantile(., 0.25, na.rm = TRUE),
@@ -2336,7 +2336,7 @@ summary_table <- flextable(summary_stats) %>%
     q3 = "3rd Quartile",
     max = "Maximum"
   ) %>%
-  colformat_double(digits = 3) %>%  # Format numbers to 3 decimal places
+  colformat_double(digits = 3) %>%
   theme_vanilla() %>%
   autofit()
 
@@ -2344,31 +2344,31 @@ summary_table <- flextable(summary_stats) %>%
 summary_table
 
 # Create visualizations
-hist_protect <- ggplot(combined_protection_EDGE_01, aes(x = weighted_protection)) +
+hist_protect <- ggplot(combined_protection_EDGE2_01, aes(x = weighted_protection)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Range-Weighted Protection \nFraction (Combined)",
+  labs(title = "Histogram of Range-Weighted Protection Fraction",
        x = "Weighted Protection Fraction",
        y = "Count")
 
-hist_EDGE2 <- ggplot(combined_protection_EDGE_01, aes(x = EDGE2.x)) +
+hist_EDGE2 <- ggplot(combined_protection_EDGE2_01, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores",
        x = "EDGE2 Score",
        y = "Count")
 
-scatter_plot <- ggplot(combined_protection_EDGE_01, aes(x = EDGE2.x, y = weighted_protection)) +
+scatter_plot <- ggplot(combined_protection_EDGE2_01, aes(x = EDGE2, y = weighted_protection)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: EDGE2 vs Weighted Protection Fraction (Combined)",
+  labs(title = "Scatterplot: EDGE2 vs Weighted Protection Fraction",
        x = "EDGE2 Score",
        y = "Weighted Protection Fraction")
 
 # Create species range type summary
-range_type_summary <- combined_protection_EDGE_01 %>%
+range_type_summary <- combined_protection_EDGE2_01 %>%
   summarise(
     total_species = n(),
     continental_only = sum(highseas_range == 0 & continental_range > 0),
@@ -2400,5 +2400,5 @@ grid_plot <- grid.arrange(
 )
 
 # Save the combined protection data
-saveRDS(combined_protection_EDGE_01, file = here::here("Data", "combined_protection_EDGE_01.rds"))
+saveRDS(combined_protection_EDGE2_01, file = here::here("Data", "combined_protection_EDGE2_01.rds"))
 ```

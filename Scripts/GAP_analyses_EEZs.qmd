@@ -801,7 +801,7 @@ violin_plot_all <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, lev
   scale_color_manual(values = iucn_colors)
 
 # Add significance bars and labels
-violin_plot_with_significance_all <- violin_plot +
+violin_plot_with_significance_all <- violin_plot_all +
   geom_segment(data = significant_comparisons,
                aes(x = x1, xend = x2, y = y.position, yend = y.position),
                inherit.aes = FALSE,
@@ -902,7 +902,7 @@ violin_plot_nt <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, leve
   scale_color_manual(values = iucn_colors)
 
 # Add significance bars and labels
-violin_plot_with_significance_nt <- violin_plot +
+violin_plot_with_significance_nt <- violin_plot_nt +
   geom_segment(data = significant_comparisons,
                aes(x = x1, xend = x2, y = y.position, yend = y.position),
                inherit.aes = FALSE,
@@ -952,6 +952,8 @@ ggsave(here::here("combined_violin_plots.png"), combined_plot, width = 12, heigh
 
 ### FUSE 0.3 budget 
 ```{r}
+# Read the data
+combined_protection_FUSE_03 <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
 
 # FUSE 0.3 budget 
 IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
@@ -959,7 +961,7 @@ IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
 IUCN$species <- gsub("_", " ", IUCN$Species)
 
 # Join with combined_protection_FUSE_03
-results_IUCN <- left_join(IUCN, combined_protection_FUSE_03, by=c("species" = "species_name"))
+results_IUCN <- left_join(IUCN, combined_protection_FUSE_03, by=c("species" = "Species"))
 
 library(ggplot2)
 library(dplyr)
@@ -1067,7 +1069,7 @@ significant_comparisons$y.position <- seq(max_y + 0.05,
                                         length.out = nrow(significant_comparisons))
 
 # Add significance bars and labels
-violin_plot_with_significance_FUSE_03 <- violin_plot_FUSE +
+violin_plot_with_significance_FUSE_03 <- violin_plot_FUSE_03 +
   geom_segment(data = significant_comparisons,
                aes(x = x1, xend = x2, y = y.position, yend = y.position),
                inherit.aes = FALSE,
@@ -1110,13 +1112,16 @@ saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_
 
 ### FUSE 0.1 budget 
 ```{r}
+# Read the data
+combined_protection_FUSE_01 <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
+
 # FUSE 0.1 budget 
 IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
 # Remove underscores from species names
 IUCN$species <- gsub("_", " ", IUCN$Species)
 
 # Join with combined_protection_FUSE_01
-results_IUCN <- left_join(IUCN, combined_protection_FUSE_01, by=c("species" = "species_name"))
+results_IUCN <- left_join(IUCN, combined_protection_FUSE_01, by=c("species" = "Species"))
 
 library(ggplot2)
 library(dplyr)
