@@ -364,11 +364,11 @@ significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
     arrange(z_score)
   
   top_5_over <- over_represented %>% 
-    select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
+    dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
     head(5)
   
   top_5_under <- under_represented %>% 
-    select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
+    dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
     head(5)
   
   combined_table <- bind_rows(
@@ -1773,7 +1773,7 @@ gam_plot <- ggplot() +
 print(gam_plot)
 
 # Create a smoother surface plot
-gam_density_plot <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
+gam_density_plot_GAP_all_MPAs <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
   stat_summary_2d(fun = mean, bins = 50) +
   scale_fill_viridis_c(name = "Predicted % MPA Coverage") +
   theme_minimal() +
@@ -1781,12 +1781,191 @@ gam_density_plot <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
        x = "Trait Axis 1",
        y = "Trait Axis 2")
 
-print(gam_density_plot)
+print(gam_density_plot_GAP_all_MPAs)
 ```
 
 **Key message:** There is a significant, relationship between the percentage of the range of sharks and rays covered by MPAs and axis 1 & 2 of the trait space. Species located in the bottom right corner of the trait space tend to be more protected, this relationship is highly significant, however, very week (R2 = 0.04, p \< 0.001).
 
-# Relate to phylogeny
+## Relate to CAPTAIN protect fraction : FUSE 0.3
+
+```{r}
+# Read the data
+combined_protection_FUSE_03 <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
+combined_protection_FUSE_01 <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
+
+# Load and prepare data
+load(here::here("Data", "GAP analyses", "coords_1005.Rdata"))
+load(here::here("Data", "GAP analyses", "grids_commonspecies_corrected_021024.Rdata"))
+
+# Convert to tibble and add row names as the first column
+coords <- tibble::rownames_to_column(coords, var = "Species")
+
+# Merge with FUSE data
+library(dplyr)
+results_coords <- left_join(coords, combined_protection_FUSE_01, by = "Species") %>%
+  rename(FUSE_01_protection = weighted_protection) %>%
+  left_join(combined_protection_FUSE_03, by = "Species") %>%
+  rename(FUSE_03_protection = weighted_protection)
+
+# Calculate correlation matrix
+cor_matrix_with_p <- rcorr(as.matrix(results_coords[, c("A1", "A2", "A3", "FUSE_03_protection", "FUSE_01_protection")]))
+
+# Extract correlation coefficients and p-values
+cor_coefficients <- cor_matrix_with_p$r
+p_values <- cor_matrix_with_p$P
+
+# Format results
+format_cor_p <- function(cor, p) {
+  sprintf("%.3f (p = %.3f)", cor, p)
+}
+
+result_df <- data.frame(
+  Predictor = c("A1", "A2", "A3"),
+  `FUSE_03_protection` = format_cor_p(cor_coefficients["FUSE_03_protection", c("A1", "A2", "A3")], 
+                                     p_values["FUSE_03_protection", c("A1", "A2", "A3")]),
+  `FUSE_01_protection` = format_cor_p(cor_coefficients["FUSE_01_protection", c("A1", "A2", "A3")], 
+                                     p_values["FUSE_01_protection", c("A1", "A2", "A3")])
+)
+
+# Format table
+format_correlation_table <- function(result_df) {
+  kable(result_df, format = "html", escape = FALSE,
+        col.names = c("Predictor", "FUSE 03", "FUSE 01"),
+        caption = "Pearson Correlation Results") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(1, bold = TRUE) %>%
+    add_header_above(c(" " = 1, "Weighted Protection" = 2)) %>%
+    footnote(general = "Values shown as: correlation coefficient (p-value)",
+             general_title = "Note:")
+}
+
+formatted_table <- format_correlation_table(result_df)
+formatted_table
+
+# Scatter plots
+# FUSE 03
+plot_A1 <- ggplot(results_coords, aes(x = A1, y = FUSE_03_protection)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A1 vs FUSE 03 Protection",
+       x = "A1",
+       y = "FUSE 03 Protection")
+
+plot_A2 <- ggplot(results_coords, aes(x = A2, y = FUSE_03_protection)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A2 vs FUSE 03 Protection",
+       x = "A2",
+       y = "FUSE 03 Protection")
+
+plot_A1 <- plot_A1 + theme(aspect.ratio = 1)
+plot_A2 <- plot_A2 + theme(aspect.ratio = 1)
+
+combined_plot_FUSE_03 <- grid.arrange(plot_A1, plot_A2, ncol = 2)
+
+# FUSE 01
+plot_A1 <- ggplot(results_coords, aes(x = A1, y = FUSE_01_protection)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A1 vs FUSE 01 Protection",
+       x = "A1",
+       y = "FUSE 01 Protection")
+
+plot_A2 <- ggplot(results_coords, aes(x = A2, y = FUSE_01_protection)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  theme_minimal() +
+  labs(title = "A2 vs FUSE 01 Protection",
+       x = "A2",
+       y = "FUSE 01 Protection")
+
+plot_A1 <- plot_A1 + theme(aspect.ratio = 1)
+plot_A2 <- plot_A2 + theme(aspect.ratio = 1)
+
+combined_plot_FUSE_01 <- grid.arrange(plot_A1, plot_A2, ncol = 2)
+
+# Now proceed with GAM analysis: FUSE 03
+gam_data <- results_coords %>%
+  dplyr::select(Species, A1, A2, FUSE_03_protection) %>%
+  filter(!is.na(FUSE_03_protection))
+
+gam_model <- gam(FUSE_03_protection ~ s(A1, A2), data = gam_data, method = "REML")
+summary(gam_model)
+
+# Make predictions and plot
+plot_data$predicted_FUSE_03 <- predict(gam_model, newdata = plot_data, type = "response")
+
+# Create the plots
+gam_plot <- ggplot() +
+  geom_point(data = plot_data, aes(x = A1, y = A2, color = predicted_FUSE_03), alpha = 0.5) +
+  scale_color_viridis_c(name = "Predicted FUSE 03 Protection") +
+  theme_minimal() +
+  labs(title = "GAM Predictions: FUSE 03 Protection",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_plot)
+
+gam_density_plot_FUSE_03 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_03)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_viridis_c(name = "Predicted FUSE 03 Protection") +
+  theme_minimal() +
+  labs(title = "GAM Predictions: FUSE 03 Protection",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_density_plot_FUSE_03)
+
+# Now proceed with GAM analysis: FUSE 01
+gam_data <- results_coords %>%
+  dplyr::select(Species, A1, A2, FUSE_01_protection) %>%
+  filter(!is.na(FUSE_01_protection))
+
+gam_model <- gam(FUSE_01_protection ~ s(A1, A2), data = gam_data, method = "REML")
+summary(gam_model)
+
+# Make predictions and plot
+plot_data$predicted_FUSE_01 <- predict(gam_model, newdata = plot_data, type = "response")
+
+# Create the plots
+gam_plot <- ggplot() +
+  geom_point(data = plot_data, aes(x = A1, y = A2, color = predicted_FUSE_01), alpha = 0.5) +
+  scale_color_viridis_c(name = "Predicted FUSE 01 Protection", limits= c(0,1)) +
+  theme_minimal() +
+  labs(title = "GAM Predictions: FUSE 01 Protection",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_plot)
+
+gam_density_plot_FUSE_01 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_01)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_viridis_c(name = "Predicted FUSE 01 Protection") +
+  theme_minimal() +
+  labs(title = "GAM Predictions: FUSE 01 Protection",
+       x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+print(gam_density_plot_FUSE_01)
+
+```
+### Combine three FD spaces in a grid 
+```{r}
+# Then combine them using patchwork:
+library(patchwork)
+combined_plot <- (gam_density_plot_GAP_all_MPAs + gam_density_plot_FUSE_01 + gam_density_plot_FUSE_03) +
+  plot_annotation(tag_levels = 'A')
+
+# Save the combined plot
+ggsave(here::here("combined_functional_spaces_with_predictions.png"), combined_plot, width = 12*2, height = 6, units = "in")
+
+```
+
+# Relate to phylogeny : GAP analysis results 
 
 Relate the percentage of species range overlapped by MPAs to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
 
@@ -2079,6 +2258,249 @@ print(tree_plot_NT)
 ```
 
 **Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; \< 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 \> p \> 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees.
+
+## Relate to phylogeny : CAPTAIN results 
+
+Relate the protected fraction of species ranges to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
+
+```{r}
+library(phytools)
+library(here)
+library(dplyr)
+library(purrr)
+library(ape)
+library(stringr)
+
+# Load the list of trees
+load(here::here("Data", "GAP analyses", "list_tree_sharks_p.Rdata"))
+
+# Function to modify species names
+modify_species_name <- function(name) {
+  str_replace(name, " ", "_")
+}
+
+# Modify species names in the EDGE dataframes
+combined_protection_EDGE_03 <- combined_protection_EDGE_03 %>%
+  mutate(species_modified = modify_species_name(species_name))
+
+combined_protection_EDGE_01 <- combined_protection_EDGE_01 %>%
+  mutate(species_modified = modify_species_name(species_name))
+
+# Function to compute phylogenetic signal for EDGE_03
+compute_phylo_signal_03 <- function(tree, data) {
+  # Match data and remove NAs
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(weighted_protection)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  n_species_after_matching <- nrow(matched_data)
+  
+  # Prune tree
+  pruned_tree <- keep.tip(tree, matched_data$species_modified)
+  
+  n_tips_pruned_tree <- length(pruned_tree$tip.label)
+  
+  # Compute phylogenetic signal
+  signal <- tryCatch({
+    captured_output <- capture.output({
+      result <- phylosig(pruned_tree, matched_data$weighted_protection, method = "lambda", test = TRUE)
+    })
+    result$captured_output <- captured_output
+    result
+  }, error = function(e) {
+    return(list(lambda = NA, P = NA, error = e$message, captured_output = NA))
+  })
+  
+  return(list(
+    lambda = signal$lambda,
+    p_value = signal$P,
+    n_species = n_species_after_matching,
+    n_tips_pruned_tree = n_tips_pruned_tree,
+    error = if(!is.null(signal$error)) signal$error else NA,
+    captured_output = paste(signal$captured_output, collapse = "\n")
+  ))
+}
+
+# Apply function to trees for EDGE_03
+results_03 <- map_dfr(list_tree_sharks_p[1:2], ~compute_phylo_signal_03(.x, combined_protection_EDGE_03), .id = "tree")
+
+# Function to format p-values (vectorized version)
+format_p_value <- function(p) {
+  sapply(p, function(x) {
+    if (is.na(x)) return(NA)
+    if (x < 0.001) return("p < 0.001")
+    if (x < 0.01) return(sprintf("p = %.3f", x))
+    return(sprintf("p = %.3f", x))
+  })
+}
+
+# Create table for EDGE_03 results with formatted p-values
+results_03 %>%
+  dplyr::select(1:4) %>%
+  mutate(p_value = format_p_value(p_value)) %>%
+  kable(caption = "Phylogenetic Signal Results for EDGE_03 Protection",
+        col.names = c("Tree", "Lambda", "P-value", "Number of Species"),
+        digits = 3,
+        align = c('l', 'c', 'c', 'c')) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Repeat for EDGE_01
+results_01 <- map_dfr(list_tree_sharks_p[1:2], ~compute_phylo_signal_03(.x, combined_protection_EDGE_01), .id = "tree")
+
+results_01 %>%
+  dplyr::select(1:4) %>%
+  mutate(p_value = format_p_value(p_value)) %>%
+  kable(caption = "Phylogenetic Signal Results for EDGE_03 Protection",
+        col.names = c("Tree", "Lambda", "P-value", "Number of Species"),
+        digits = 3,
+        align = c('l', 'c', 'c', 'c')) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Plot circular trees
+library(ggtree)
+library(ggplot2)
+library(RColorBrewer)
+library(tidytree)
+
+# Function to get color palette
+get_color_palette <- function(n) {
+  colorRampPalette(brewer.pal(9, "YlGnBu"))(n)
+}
+
+# Function to plot circular tree
+plot_circular_colored_tree_EDGE <- function(tree, data) {
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(weighted_protection)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  pruned_tree <- ape::keep.tip(tree, matched_data$species_modified)
+  
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  tree_data <- as_tibble(pruned_tree) %>%
+    left_join(matched_data, by = c("label" = "species_modified"))
+  
+  p <- ggtree(pruned_tree, layout="circular", aes(color=weighted_protection), size=0.3) %<+% tree_data
+  
+  p <- p + 
+    scale_color_gradientn(colours = color_palette, 
+                         name = "Weighted Protection",
+                         na.value = "grey50", limits = c(0,1)) +
+    theme(legend.position = "right",
+          plot.title = element_text(hjust = 0.5))
+  
+  return(p)
+}
+
+# Plot trees for both EDGE_03 and EDGE_01
+tree_plot_03 <- plot_circular_colored_tree_EDGE(list_tree_sharks_p[[1]], combined_protection_EDGE_03)
+print(tree_plot_03)
+
+tree_plot_01 <- plot_circular_colored_tree_EDGE(list_tree_sharks_p[[1]], combined_protection_EDGE_01)
+print(tree_plot_01)
+
+#Identify clades with higher prioritisation 
+# Modified function with improved visualization
+plot_and_analyze_clades <- function(tree, data, title = "") {
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    filter(!is.na(weighted_protection)) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  pruned_tree <- ape::keep.tip(tree, matched_data$species_modified)
+  
+  # Calculate mean protection value for each genus
+  genus_data <- matched_data %>%
+    mutate(genus = str_extract(species_modified, "^[^_]+")) %>%
+    group_by(genus) %>%
+    summarize(
+      mean_protection = mean(weighted_protection),
+      n_species = n()
+    ) %>%
+    filter(mean_protection > quantile(mean_protection, 0.75)) %>%
+    arrange(desc(mean_protection))
+  
+  # Create tree plot without grey borders
+  p <- ggtree(pruned_tree, layout="circular", size=0.2) 
+  
+  # Add the data to the tree without borders
+  p <- p %<+% matched_data + 
+    geom_tippoint(aes(color=weighted_protection), size=2, shape=16) +  # shape=16 gives solid dots without borders
+    scale_color_gradientn(
+      colours = colorRampPalette(brewer.pal(9, "YlOrRd"))(100),
+      name = "Protection Priority",
+      limits = c(0, 1)
+    ) +
+    ggtitle(title) +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14),
+      legend.position = "right",
+      panel.background = element_blank(),
+      plot.background = element_blank()
+    )
+  
+  # Highlight high-priority genera with more transparent highlights
+  top_genera <- genus_data$genus[1:5]
+  for(genus in top_genera) {
+    tips <- matched_data %>%
+      filter(str_detect(species_modified, paste0("^", genus))) %>%
+      pull(species_modified)
+    
+    if(length(tips) > 0) {
+      p <- p + geom_hilight(node = MRCA(p, tips), fill = "blue", alpha = 0.1)
+    }
+  }
+  
+  return(list(
+    plot = p,
+    high_priority_genera = genus_data
+  ))
+}
+
+# Create plots for both scenarios
+analysis_03 <- plot_and_analyze_clades(
+  list_tree_sharks_p[[1]], 
+  combined_protection_EDGE_03, 
+  "EDGE Protection Priority (0.3 budget)"
+)
+
+analysis_01 <- plot_and_analyze_clades(
+  list_tree_sharks_p[[1]], 
+  combined_protection_EDGE_01, 
+  "EDGE Protection Priority (0.1 budget)"
+)
+
+# Display combined plot
+grid.arrange(
+  analysis_03$plot, 
+  analysis_01$plot, 
+  ncol = 2
+)
+
+# Print results
+print("Top priority genera (EDGE 0.3):")
+print(analysis_03$high_priority_genera %>% head(10))
+print("\nTop priority genera (EDGE 0.1):")
+print(analysis_01$high_priority_genera %>% head(10))
+
+```
+
+### Combine four trees in a grid 
+```{r}
+# Then combine them using patchwork:
+library(patchwork)
+combined_plot <- (tree_plot_NT + tree_plot_ALL) /
+  (tree_plot_01 + tree_plot_03) + 
+  plot_annotation(tag_levels = 'A')
+
+# Save the combined plot
+ggsave(here::here("combined_phylogenetic_trees.png"), combined_plot, 
+       width = 12, height = 8, units = "in")
+
+```
 
 # Relate to FUSE and EDGE2
 
