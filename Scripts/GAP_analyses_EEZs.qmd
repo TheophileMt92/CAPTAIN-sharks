@@ -1603,6 +1603,159 @@ combined_plot <- (violin_plot_with_significance_all + violin_plot_with_significa
 ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width = 12, height = 5*3, units = "in")
 
 ```
+### Ridgeline chart 
+```{r}
+library(tidyverse)
+library(ggridges)
+
+# 1. First prepare the IUCN data and function
+prepare_iucn_data <- function(species_data, species_col) {
+  IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+  IUCN$species <- gsub("_", " ", IUCN$Species)
+  
+  # Rename the species column in the input data to match
+  species_data <- species_data %>%
+    dplyr::rename(species = all_of(species_col))
+  
+  results_IUCN <- left_join(IUCN, species_data, by="species") %>%
+    mutate(IUCN_status = case_when(
+      iucn_GE == 0 ~ "LC",
+      iucn_GE == 1 ~ "NT",
+      iucn_GE == 2 ~ "VU",
+      iucn_GE == 3 ~ "EN",
+      iucn_GE == 4 ~ "CR",
+      TRUE ~ "Unknown"
+    )) %>%
+    filter(IUCN_status != "Unknown")
+  
+  return(results_IUCN)
+}
+
+# 2. Prepare all datasets
+mpa_data <- results %>%
+  dplyr::select(Species, percentage_in_ALL_MPA, percentage_in_NT_MPA)
+
+fuse01_data <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
+fuse03_data <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
+edge01_data <- readRDS(here::here("Data", "combined_protection_EDGE_01.rds"))
+edge03_data <- readRDS(here::here("Data", "combined_protection_EDGE_03.rds"))
+
+# 3. Create separate dataframes with IUCN status
+# Modify the MPA data scenario names
+mpa_iucn <- prepare_iucn_data(mpa_data, "Species") %>%
+  dplyr::select(species, IUCN_status, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
+  pivot_longer(cols = c(percentage_in_ALL_MPA, percentage_in_NT_MPA),
+               names_to = "scenario",
+               values_to = "protection") %>%
+  mutate(scenario = case_when(
+    scenario == "percentage_in_NT_MPA" ~ "Current no-take MPAs overlaps",
+    scenario == "percentage_in_ALL_MPA" ~ "Current all MPAs overlaps"
+  ))
+
+# Modify FUSE scenarios names
+fuse01_iucn <- prepare_iucn_data(fuse01_data, "Species") %>%
+  dplyr::select(species, IUCN_status, weighted_protection) %>%
+  mutate(protection = weighted_protection * 100,
+         scenario = "FUSE scenario, budget 10%") %>%
+  dplyr::select(-weighted_protection)
+
+fuse03_iucn <- prepare_iucn_data(fuse03_data, "Species") %>%
+  dplyr::select(species, IUCN_status, weighted_protection) %>%
+  mutate(protection = weighted_protection * 100,
+         scenario = "FUSE scenario, budget 30%") %>%
+  dplyr::select(-weighted_protection)
+
+# Modify EDGE2 scenarios names
+edge01_iucn <- prepare_iucn_data(edge01_data, "species_name") %>%
+  dplyr::select(species, IUCN_status, weighted_protection) %>%
+  mutate(protection = weighted_protection * 100,
+         scenario = "EDGE2 scenario, budget 10%") %>%
+  dplyr::select(-weighted_protection)
+
+edge03_iucn <- prepare_iucn_data(edge03_data, "species_name") %>%
+  dplyr::select(species, IUCN_status, weighted_protection) %>%
+  mutate(protection = weighted_protection * 100,
+         scenario = "EDGE2 scenario, budget 30%") %>%
+  dplyr::select(-weighted_protection)
+
+# Combine all data
+combined_data <- bind_rows(
+  mpa_iucn,
+  fuse01_iucn,
+  fuse03_iucn,
+  edge01_iucn,
+  edge03_iucn
+)
+
+# Update factor levels with new names
+combined_data$scenario <- factor(combined_data$scenario,
+                               levels = c("Current no-take MPAs overlaps", 
+                                        "Current all MPAs overlaps",
+                                        "FUSE scenario, budget 10%", 
+                                        "FUSE scenario, budget 30%",
+                                        "EDGE2 scenario, budget 10%", 
+                                        "EDGE2 scenario, budget 30%"))
+# 6. Create the plot
+iucn_colors <- c(
+  "CR" = "#D81E05",
+  "EN" = "#FC7F3F",
+  "VU" = "#FEC748",
+  "NT" = "#58AFFF",
+  "LC" = "#38AB38"
+)
+
+# Modify the plot
+rdplot = ggplot(combined_data, 
+       aes(x = factor(IUCN_status, levels = iucn_order), 
+           y = protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
+              trim = FALSE, 
+              alpha = 0.5) +
+  geom_jitter(width = 0.1, 
+              size = 0.4, 
+              alpha = 0.5, 
+              color = "darkgray") +
+  geom_boxplot(width = 0.1, 
+               fill = "white", 
+               color = "black", 
+               outlier.shape = NA, 
+               alpha = 0.8) +
+  facet_wrap(~scenario, ncol = 1) +  # Single column arrangement
+  labs(x = "IUCN Red List threat status", 
+       y = "Range protected (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none",
+    strip.text = element_text(face = "bold", color = "white"),
+    strip.background = element_rect(fill = "black"),
+    panel.grid.major.x = element_blank()
+  ) +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_continuous(limits = c(0, 125),
+                    breaks = seq(0, 100, 25))
+rdplot
+
+# Add white background to the plot
+rdplot_white = rdplot + 
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+# Save only PNG with white background
+ggsave(
+  filename = here::here("scenarios_IUCN_protection.png"),
+  plot = rdplot_white,
+  width = 4,
+  height = 12,
+  dpi = 300,
+  bg = "white"  # This ensures white background in the saved file
+)
+
+```
 
 # Relate to species traits
 
@@ -1773,9 +1926,32 @@ gam_plot <- ggplot() +
 print(gam_plot)
 
 # Create a smoother surface plot
+# Create custom breaks at 10% intervals
+custom_breaks <- seq(0, 100, by = 10)
+
+# Custom colors for each 10% increment
+custom_colors <- c(
+  "#440154", # 0-10%
+  "#414487", # 10-20%
+  "#2A788E", # 20-30%
+  "#22A884", # 30-40%
+  "#7AD151", # 40-50%
+  "#FDE725", # 50-60%
+  "#FCA50A", # 60-70%
+  "#F47B07", # 70-80%
+  "#E85110", # 80-90%
+  "#DC2F1F"  # 90-100%
+)
+
 gam_density_plot_GAP_all_MPAs <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
   stat_summary_2d(fun = mean, bins = 50) +
-  scale_fill_viridis_c(name = "Predicted % MPA Coverage") +
+  scale_fill_gradientn(
+    name = "MPA Coverage (%)",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 100),
+    oob = scales::squish
+  ) +
   theme_minimal() +
   labs(title = "GAM Predictions: Percentage in ALL MPA",
        x = "Trait Axis 1",
@@ -1910,9 +2086,32 @@ gam_plot <- ggplot() +
 
 print(gam_plot)
 
-gam_density_plot_FUSE_03 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_03)) +
+# Create custom breaks at 10% intervals
+custom_breaks <- seq(0, 100, by = 10)
+
+# Custom colors for each 10% increment
+custom_colors <- c(
+  "#440154", # 0-10%
+  "#414487", # 10-20%
+  "#2A788E", # 20-30%
+  "#22A884", # 30-40%
+  "#7AD151", # 40-50%
+  "#FDE725", # 50-60%
+  "#FCA50A", # 60-70%
+  "#F47B07", # 70-80%
+  "#E85110", # 80-90%
+  "#DC2F1F"  # 90-100%
+)
+
+gam_density_plot_FUSE_03 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_03*100)) +
   stat_summary_2d(fun = mean, bins = 50) +
-  scale_fill_viridis_c(name = "Predicted FUSE 03 Protection") +
+  scale_fill_gradientn(
+    name = "Protection (%)",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 100),
+    oob = scales::squish
+  ) +
   theme_minimal() +
   labs(title = "GAM Predictions: FUSE 03 Protection",
        x = "Trait Axis 1",
@@ -1942,9 +2141,32 @@ gam_plot <- ggplot() +
 
 print(gam_plot)
 
-gam_density_plot_FUSE_01 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_01)) +
+# Create custom breaks at 10% intervals
+custom_breaks <- seq(0, 100, by = 10)
+
+# Create custom colors for each 10% increment
+custom_colors <- c(
+  "#440154", # 0-10%
+  "#414487", # 10-20%
+  "#2A788E", # 20-30%
+  "#22A884", # 30-40%
+  "#7AD151", # 40-50%
+  "#FDE725", # 50-60%
+  "#FCA50A", # 60-70%
+  "#F47B07", # 70-80%
+  "#E85110", # 80-90%
+  "#DC2F1F"  # 90-100%
+)
+
+gam_density_plot_FUSE_01 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_01*100)) +
   stat_summary_2d(fun = mean, bins = 50) +
-  scale_fill_viridis_c(name = "Predicted FUSE 01 Protection") +
+  scale_fill_gradientn(
+    name = "Protection (%)",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 100),
+    oob = scales::squish
+  ) +
   theme_minimal() +
   labs(title = "GAM Predictions: FUSE 01 Protection",
        x = "Trait Axis 1",
@@ -1955,14 +2177,90 @@ print(gam_density_plot_FUSE_01)
 ```
 ### Combine three FD spaces in a grid 
 ```{r}
-# Then combine them using patchwork:
+# Create breaks at 10% increments
+custom_breaks <- seq(0, 70, by = 10)  # Now in percentages
+
+# Same custom colors
+custom_colors <- c(
+  "#440154", # Dark purple
+  "#414487", 
+  "#2A788E", 
+  "#22A884", 
+  "#7AD151", 
+  "#FDE725", 
+  "#FCA50A", 
+  "#F47B07", 
+  "#E85110", 
+  "#DC2F1F"  # Dark red
+)
+
+# Common theme to remove individual legends
+no_legend_theme <- theme_minimal() +
+  theme(legend.position = "none")
+
+# Theme for the middle plot with modified legend
+middle_plot_theme <- theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.key.height = unit(1, "cm"),  # Make legend longer
+    legend.key.width = unit(0.6, "cm"),   # Make legend wider
+    legend.title = element_text(size = 12)
+  )
+
+# Update each plot with percentage values, no titles, and no individual legends
+gam_density_plot_GAP_all_MPAs <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_gradientn(
+    name = "Range protected (%)",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 70),
+    oob = scales::squish
+  ) +
+  no_legend_theme +
+  labs(x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+gam_density_plot_FUSE_01 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_01 * 100)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_gradientn(
+    name = "Range protected (%)",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 70),
+    oob = scales::squish
+  ) +
+  middle_plot_theme +  # Apply the modified theme with larger legend
+  labs(x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+gam_density_plot_FUSE_03 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_FUSE_03 * 100)) +
+  stat_summary_2d(fun = mean, bins = 50) +
+  scale_fill_gradientn(
+    name = "",
+    colors = custom_colors,
+    breaks = custom_breaks,
+    limits = c(0, 70),
+    oob = scales::squish
+  ) +
+  no_legend_theme +
+  labs(x = "Trait Axis 1",
+       y = "Trait Axis 2")
+
+# Combine plots
 library(patchwork)
-combined_plot <- (gam_density_plot_GAP_all_MPAs + gam_density_plot_FUSE_01 + gam_density_plot_FUSE_03) +
-  plot_annotation(tag_levels = 'A')
+
+# Combine plots
+combined_plot <- (gam_density_plot_GAP_all_MPAs / 
+                 gam_density_plot_FUSE_01 / 
+                 gam_density_plot_FUSE_03) +
+  plot_annotation(tag_levels = 'A') +
+  plot_layout(ncol = 1)
+
+print(combined_plot)
 
 # Save the combined plot
-ggsave(here::here("combined_functional_spaces_with_predictions.png"), combined_plot, width = 12*2, height = 6, units = "in")
-
+ggsave(here::here("combined_functional_spaces_with_predictions.png"), combined_plot, width = 8*0.9, height = 18*0.8, units = "in")
 ```
 
 # Relate to phylogeny : GAP analysis results 
