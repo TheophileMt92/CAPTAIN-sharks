@@ -2557,6 +2557,166 @@ print(tree_plot_NT)
 
 **Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; \< 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 \> p \> 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees.
 
+### Combine all trees in a single one : GAP analysis only 
+
+```{r}
+library(tibble)
+plot_combined_circular_tree <- function(tree, data) {
+  library(ggplot2)
+  library(ggtree)
+  
+  # Ensure the data is in the same order as the tree tips
+  matched_data <- data %>%
+    filter(species_modified %in% tree$tip.label) %>%
+    arrange(match(species_modified, tree$tip.label))
+  
+  # Create a data frame specifically for the heatmap
+  # Reordering columns to put no-take MPAs first
+  heatmap_data <- matched_data %>%
+    select(species_modified, percentage_in_NT_MPA, percentage_in_ALL_MPA) %>%  # Reordered columns
+    # Convert to numeric explicitly to avoid any type issues
+    mutate(
+      percentage_in_NT_MPA = as.numeric(percentage_in_NT_MPA),
+      percentage_in_ALL_MPA = as.numeric(percentage_in_ALL_MPA)
+    )
+  
+  # Set row names manually
+  heatmap_matrix <- as.matrix(heatmap_data[, -1])  # Remove species column and convert to matrix
+  rownames(heatmap_matrix) <- heatmap_data$species_modified  # Set the row names
+  
+  # Prune the tree to match the available data
+  pruned_tree <- ape::keep.tip(tree, rownames(heatmap_matrix))
+  
+  # Create color palette
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  # Base circular tree plot with light grey for tree lines
+  p <- ggtree(pruned_tree, layout="circular", size=0.3, color="lightgrey")
+  
+  # Add heatmap rings without column names
+  p <- gheatmap(p, heatmap_matrix, 
+                width=0.2,
+                offset=0.1, 
+                colnames=FALSE,  # No column names
+                font.size=3) + 
+    scale_fill_gradientn(
+      colours=color_palette, 
+      name="Range Coverage (%)",
+      limits=c(0, 100),
+      na.value="grey80",
+      oob=scales::squish
+    )
+  
+  # No title as requested
+  p <- p + theme(
+    plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")  # Keep some margin for readability
+  )
+  
+  return(p)
+}
+
+#Call the function to create the plot
+combined_tree_plot <- plot_combined_circular_tree(list_tree_sharks_p[[1]], results_IUCN_filtered)
+
+# Display the plot
+combined_tree_plot
+# or
+print(combined_tree_plot)
+
+# Alternative with geom_fruit()
+library(ggtree)
+library(ggnewscale)
+library(dplyr)
+library(ggtreeExtra)
+
+plot_dual_ring_tree <- function(tree, data) {
+  # Make a copy of the data to avoid modifying the original
+  plot_data <- data %>%
+    filter(species_modified %in% tree$tip.label)
+  
+  # Check if we have any valid data
+  if(all(is.na(plot_data$percentage_in_ALL_MPA)) && all(is.na(plot_data$percentage_in_NT_MPA))) {
+    stop("No valid percentage data available for visualization")
+  }
+  
+  # Convert percentage columns to numeric if they aren't already
+  plot_data$percentage_in_ALL_MPA <- as.numeric(plot_data$percentage_in_ALL_MPA)
+  plot_data$percentage_in_NT_MPA <- as.numeric(plot_data$percentage_in_NT_MPA)
+  
+  # Prune the tree to match the available data
+  pruned_tree <- ape::keep.tip(tree, plot_data$species_modified)
+  
+  # Create color palette
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  # Create the base tree
+  p <- ggtree(pruned_tree, layout="circular", size=0.3)
+  
+  # Debug information
+  cat("Number of species in tree:", length(pruned_tree$tip.label), "\n")
+  cat("Number of species in data:", nrow(plot_data), "\n")
+  cat("ALL MPA data range:", range(plot_data$percentage_in_ALL_MPA, na.rm=TRUE), "\n")
+  cat("NT MPA data range:", range(plot_data$percentage_in_NT_MPA, na.rm=TRUE), "\n")
+  
+  # Add first ring for ALL MPAs (only if we have valid data)
+  if(!all(is.na(plot_data$percentage_in_ALL_MPA))) {
+    p <- p + 
+      geom_fruit(
+        data=plot_data,
+        geom=geom_col,
+        mapping=aes(y=species_modified, x=percentage_in_ALL_MPA, fill=percentage_in_ALL_MPA),
+        orientation="y",
+        offset=0.1,
+        width=0.08,
+        pwidth=0.3,
+        axis.params=list(axis="x", text.size=2, vjust=0.5, hjust=1)
+      ) + 
+      scale_fill_gradientn(
+        colors=color_palette,
+        name="% Range in\nAll MPAs",
+        limits=c(0, 100),
+        na.value="grey80",
+        oob=scales::squish
+      )
+  }
+  
+  # Add second ring for NT MPAs (only if we have valid data)
+  if(!all(is.na(plot_data$percentage_in_NT_MPA))) {
+    p <- p + 
+      new_scale_fill() +
+      geom_fruit(
+        data=plot_data,
+        geom=geom_col,
+        mapping=aes(y=species_modified, x=percentage_in_NT_MPA, fill=percentage_in_NT_MPA),
+        orientation="y",
+        offset=0.25,
+        width=0.08,
+        pwidth=0.3,
+        axis.params=list(axis="x", text.size=2, vjust=0.5, hjust=1)
+      ) + 
+      scale_fill_gradientn(
+        colors=color_palette,
+        name="% Range in\nNo-Take MPAs",
+        limits=c(0, 100),
+        na.value="grey80",
+        oob=scales::squish
+      )
+  }
+  
+  # Add title
+  p <- p + 
+    ggtitle("Phylogenetic Distribution of MPA Coverage") +
+    theme(plot.title = element_text(hjust=0.5, size=14))
+  
+  return(p)
+}
+
+# Plot the modified version
+dual_ring_tree <- plot_dual_ring_tree(list_tree_sharks_p[[1]], results_IUCN_filtered)
+```
+
 ## Relate to phylogeny : CAPTAIN results 
 
 Relate the protected fraction of species ranges to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
@@ -2798,6 +2958,108 @@ combined_plot <- (tree_plot_NT + tree_plot_ALL) /
 ggsave(here::here("combined_phylogenetic_trees.png"), combined_plot, 
        width = 12, height = 8, units = "in")
 
+```
+
+### Combine all trees in a single one : GAP analysis and EDGE 2 values -> heatmap approach 
+
+```{r}
+plot_combined_circular_tree <- function(tree, data, edge_data_01, edge_data_03) {
+  library(ggplot2)
+  library(ggtree)
+  library(dplyr)
+  
+  # Ensure all datasets have common species
+  common_species <- Reduce(intersect, list(
+    data$species_modified[data$species_modified %in% tree$tip.label],
+    edge_data_01$species_modified[edge_data_01$species_modified %in% tree$tip.label & !is.na(edge_data_01$weighted_protection)],
+    edge_data_03$species_modified[edge_data_03$species_modified %in% tree$tip.label & !is.na(edge_data_03$weighted_protection)]
+  ))
+  
+  # Filter and arrange all datasets
+  matched_data <- data %>%
+    filter(species_modified %in% common_species) %>%
+    arrange(match(species_modified, common_species))
+  
+  matched_data_01 <- edge_data_01 %>%
+    filter(species_modified %in% common_species) %>%
+    arrange(match(species_modified, common_species))
+  
+  matched_data_03 <- edge_data_03 %>%
+    filter(species_modified %in% common_species) %>%
+    arrange(match(species_modified, common_species))
+  
+  # Create a dataframe for MPA percentages
+  mpa_data <- matched_data %>%
+    select(species_modified, percentage_in_NT_MPA, percentage_in_ALL_MPA) %>%
+    mutate(
+      percentage_in_NT_MPA = as.numeric(percentage_in_NT_MPA),
+      percentage_in_ALL_MPA = as.numeric(percentage_in_ALL_MPA)
+    )
+  
+  # Create a separate dataframe for EDGE weighted protection, 
+  # converting from proportion (0-1) to percentage (0-100)
+  edge_data <- data.frame(
+    species_modified = matched_data_01$species_modified,
+    weighted_protection_01 = matched_data_01$weighted_protection * 100,  # Convert to percentage
+    weighted_protection_03 = matched_data_03$weighted_protection * 100   # Convert to percentage
+  )
+  
+  # Set row names manually and create matrices
+  mpa_matrix <- as.matrix(mpa_data[, -1])
+  rownames(mpa_matrix) <- mpa_data$species_modified
+  
+  edge_matrix <- as.matrix(edge_data[, -1]) 
+  rownames(edge_matrix) <- edge_data$species_modified
+  
+  # Combine into one matrix with desired ring order
+  combined_matrix <- cbind(
+    "NTake MPA" = mpa_matrix[, "percentage_in_NT_MPA"],
+    "All MPA" = mpa_matrix[, "percentage_in_ALL_MPA"],
+    "EDGE 01" = edge_matrix[, "weighted_protection_01"],
+    "EDGE 03" = edge_matrix[, "weighted_protection_03"]
+  )
+  
+  # Prune the tree to match the available data
+  pruned_tree <- ape::keep.tip(tree, rownames(combined_matrix))
+  
+  # Create color palette
+  n_colors <- 100
+  color_palette <- get_color_palette(n_colors)
+  
+  # Base circular tree plot with light grey for tree lines
+  p <- ggtree(pruned_tree, layout="circular", size=0.3, color="lightgrey")
+  
+  # Add heatmap rings without column names
+  p <- gheatmap(p, combined_matrix, 
+                width=0.4,  # Wider to accommodate 4 rings
+                offset=0.1, 
+                colnames=FALSE,
+                font.size=3) + 
+    scale_fill_gradientn(
+      colours=color_palette, 
+      name="Range protected (%)",  # Updated legend title
+      limits=c(0, 100),
+      na.value="grey80",
+      oob=scales::squish
+    )
+  
+  # Keep clean layout
+  p <- p + theme(
+    plot.margin = margin(t=10, r=10, b=10, l=10, unit="pt")
+  )
+  
+  return(p)
+}
+
+combined_tree_plot <- plot_combined_circular_tree(
+  list_tree_sharks_p[[1]], 
+  results_IUCN_filtered,
+  combined_protection_EDGE_01,
+  combined_protection_EDGE_03
+)
+
+# Display the plot
+combined_tree_plot
 ```
 
 # Relate to FUSE and EDGE2
