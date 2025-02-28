@@ -104,7 +104,7 @@ print(summary(results$percentage_in_NT_MPA))
 print(sd(results$percentage_in_NT_MPA))
 
 # Save results to CSV
-#write.csv(results, "species_mpa_coverage_ALL_and_NT.csv", row.names = FALSE)
+write.csv(results, here::here("Data","species_mpa_coverage_ALL_and_NT.csv"), row.names = FALSE)
 ```
 
 # Null model of MPA placement within EEZs
@@ -701,6 +701,9 @@ IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
 # Remove underscores from species names
 IUCN$species <- gsub("_", " ", IUCN$Species)
 
+# Read the CSV file and assign it to "results"
+results <- read.csv(here::here("Data", "species_mpa_coverage_ALL_and_NT.csv"))
+
 results_IUCN=left_join(IUCN, results, by=c("species"))
 
 library(ggplot2)
@@ -942,7 +945,7 @@ combined_plot <- violin_plot_with_significance_all + violin_plot_with_significan
   plot_annotation(tag_levels = 'A')
 
 # Save the combined plot
-ggsave(here::here("combined_violin_plots.png"), combined_plot, width = 12, height = 6, units = "in")
+ggsave(here::here("combined_violin_plots_current_protection.png"), combined_plot, width = 12, height = 6, units = "in")
 
 ```
 
@@ -1633,7 +1636,8 @@ prepare_iucn_data <- function(species_data, species_col) {
 
 # 2. Prepare all datasets
 mpa_data <- results %>%
-  dplyr::select(Species, percentage_in_ALL_MPA, percentage_in_NT_MPA)
+  dplyr::select(species, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
+  dplyr::rename(Species = species)
 
 fuse01_data <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
 fuse03_data <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
@@ -2326,6 +2330,7 @@ compute_phylo_signal <- function(tree, data) {
     captured_output = paste(signal$captured_output, collapse = "\n")
   ))
 }
+
 # Apply the function to all trees: using the first two only for the moment to save time
 results <- map_dfr(list_tree_sharks_p[1:2], ~compute_phylo_signal(.x, results_IUCN_filtered), .id = "tree")
 
@@ -3060,6 +3065,15 @@ combined_tree_plot <- plot_combined_circular_tree(
 
 # Display the plot
 combined_tree_plot
+
+# Save the plot as PNG
+ggsave(
+  here::here("combined_tree_plot_heatmap.png"),  # Filename (include path if needed)
+  plot = combined_tree_plot,
+  width = 10,                # Width in inches
+  height = 10,               # Height in inches
+  dpi = 300                  # Resolution (dots per inch)
+)
 ```
 
 # Relate to FUSE and EDGE2
