@@ -552,11 +552,11 @@ ggsave(here::here("SES_maps_comparison.png"),
 
 ```
 
-**Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs. 
+**Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs.
 
-# Maps for the manuscript 
+# Maps for the manuscript
 
-Map Standardised Effect Sizes of MPA coverage with Mcbryde Thomas 2 projection 
+Map Standardised Effect Sizes of MPA coverage with Mcbryde Thomas 2 projection
 
 ```{r}
 library(ggplot2)
@@ -951,9 +951,10 @@ ggsave(here::here("combined_violin_plots_current_protection.png"), combined_plot
 
 **Key message:** Least concerned species are significantly more protected by all MPAs than any other IUCN Red List threat status category. We also note a similar relationship (LC vs VU, EN & CR) for no-take MPAs, however, after p-value adjustment for multiple comparison, differences were not significant for no-take MPAs.
 
-## Relate to IUCN status: proposed protection 
+## Relate to IUCN status: proposed protection
 
-### FUSE 0.3 budget 
+### FUSE 0.3 budget
+
 ```{r}
 # Read the data
 combined_protection_FUSE_03 <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
@@ -1113,7 +1114,8 @@ print(summary_stats)
 saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_FUSE_03.rds"))
 ```
 
-### FUSE 0.1 budget 
+### FUSE 0.1 budget
+
 ```{r}
 # Read the data
 combined_protection_FUSE_01 <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
@@ -1273,7 +1275,8 @@ print(summary_stats)
 saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_FUSE_01.rds"))
 ```
 
-### EDGE 0.3 budget 
+### EDGE 0.3 budget
+
 ```{r}
 # Read the data
 combined_protection_EDGE_03 <- readRDS(here::here("Data", "combined_protection_EDGE_03.rds"))
@@ -1433,7 +1436,8 @@ print(summary_stats)
 saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_EDGE_03.rds"))
 ```
 
-### EDGE 0.1 budget 
+### EDGE 0.1 budget
+
 ```{r}
 # Read the data
 combined_protection_EDGE_01 <- readRDS(here::here("Data", "combined_protection_EDGE_01.rds"))
@@ -1593,7 +1597,8 @@ print(summary_stats)
 saveRDS(results_IUCN_filtered, file = here::here("Data", "results_IUCN_filtered_EDGE_01.rds"))
 ```
 
-### Combine six plots in a grid 
+### Combine six plots in a grid
+
 ```{r}
 # Then combine them using patchwork:
 library(patchwork)
@@ -1606,7 +1611,9 @@ combined_plot <- (violin_plot_with_significance_all + violin_plot_with_significa
 ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width = 12, height = 5*3, units = "in")
 
 ```
-### Ridgeline chart 
+
+### Ridgeline chart
+
 ```{r}
 library(tidyverse)
 library(ggridges)
@@ -1708,6 +1715,8 @@ iucn_colors <- c(
   "LC" = "#38AB38"
 )
 
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
 # Modify the plot
 rdplot = ggplot(combined_data, 
        aes(x = factor(IUCN_status, levels = iucn_order), 
@@ -1724,7 +1733,7 @@ rdplot = ggplot(combined_data,
                color = "black", 
                outlier.shape = NA, 
                alpha = 0.8) +
-  facet_wrap(~scenario, ncol = 1) +  # Single column arrangement
+  facet_wrap(~scenario, ncol = 3, nrow= 2, dir = "v") +  # Single column arrangement
   labs(x = "IUCN Red List threat status", 
        y = "Range protected (%)") +
   theme_minimal() +
@@ -1738,7 +1747,7 @@ rdplot = ggplot(combined_data,
   scale_x_discrete(limits = iucn_order) +
   scale_fill_manual(values = iucn_colors) +
   scale_color_manual(values = iucn_colors) +
-  scale_y_continuous(limits = c(0, 125),
+  scale_y_continuous(limits = c(0, 100),
                     breaks = seq(0, 100, 25))
 rdplot
 
@@ -1751,10 +1760,10 @@ rdplot_white = rdplot +
 
 # Save only PNG with white background
 ggsave(
-  filename = here::here("scenarios_IUCN_protection.png"),
+  filename = here::here("scenarios_IUCN_protection_3cols.png"),
   plot = rdplot_white,
-  width = 4,
-  height = 12,
+  width = 8,
+  height = 5,
   dpi = 300,
   bg = "white"  # This ensures white background in the saved file
 )
@@ -2179,7 +2188,9 @@ gam_density_plot_FUSE_01 <- ggplot(plot_data, aes(x = A1, y = A2, z = predicted_
 print(gam_density_plot_FUSE_01)
 
 ```
-### Combine three FD spaces in a grid 
+
+### Combine three FD spaces in a grid
+
 ```{r}
 # Create breaks at 10% increments
 custom_breaks <- seq(0, 70, by = 10)  # Now in percentages
@@ -2267,7 +2278,7 @@ print(combined_plot)
 ggsave(here::here("combined_functional_spaces_with_predictions.png"), combined_plot, width = 8*0.9, height = 18*0.8, units = "in")
 ```
 
-# Relate to phylogeny : GAP analysis results 
+# Relate to phylogeny : GAP analysis results
 
 Relate the percentage of species range overlapped by MPAs to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
 
@@ -2562,7 +2573,7 @@ print(tree_plot_NT)
 
 **Key message:** There are significant phylogenetic signals with the percentage of MPA coverage for all MPAs (lambda= 0.12-0.17; \< 0.05), and for no-take MPAs, this relationship is almost significant (lambda = 0.04; 0.08 \> p \> 0.05). However, patterns are not obvious on the trees. Analyses were ran for two trees only but can be replicated to all 100 trees.
 
-### Combine all trees in a single one : GAP analysis only 
+### Combine all trees in a single one : GAP analysis only
 
 ```{r}
 library(tibble)
@@ -2722,7 +2733,7 @@ plot_dual_ring_tree <- function(tree, data) {
 dual_ring_tree <- plot_dual_ring_tree(list_tree_sharks_p[[1]], results_IUCN_filtered)
 ```
 
-## Relate to phylogeny : CAPTAIN results 
+## Relate to phylogeny : CAPTAIN results
 
 Relate the protected fraction of species ranges to the phylogenetic tree of species, with tests of phylogenetic signal and plots of trees with the variable mapped onto the tree.
 
@@ -2951,7 +2962,8 @@ print(analysis_01$high_priority_genera %>% head(10))
 
 ```
 
-### Combine four trees in a grid 
+### Combine four trees in a grid
+
 ```{r}
 # Then combine them using patchwork:
 library(patchwork)
@@ -2965,7 +2977,7 @@ ggsave(here::here("combined_phylogenetic_trees.png"), combined_plot,
 
 ```
 
-### Combine all trees in a single one : GAP analysis and EDGE 2 values -> heatmap approach 
+### Combine all trees in a single one : GAP analysis and EDGE 2 values -\> heatmap approach
 
 ```{r}
 plot_combined_circular_tree <- function(tree, data, edge_data_01, edge_data_03) {
@@ -3078,7 +3090,8 @@ ggsave(
 
 # Relate to FUSE and EDGE2
 
-Relate the percentage of species range overlapped by MPAs to FUSE and EDGE2 
+Relate the percentage of species range overlapped by MPAs to FUSE and EDGE2
+
 ```{r}
 library(jsonlite)
 library(here)
@@ -3152,5 +3165,4 @@ kable_table <- kable(correlation_results,
 kable_table
 ```
 
-**Key message:** There is significant negative relationship between EDGE2 and FUSE with the % of range protected. Species with high FUSE or high EDGE2 tend to be less protected than those with low EDGE2 or FUSE. 
-
+**Key message:** There is significant negative relationship between EDGE2 and FUSE with the % of range protected. Species with high FUSE or high EDGE2 tend to be less protected than those with low EDGE2 or FUSE.
