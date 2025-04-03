@@ -37,7 +37,7 @@ library(jsonlite)
 library(here)
 ```
 
-## FUSE : conservation prioritiy maps
+## FUSE : conservation priority maps
 
 ### Budget: 0.3 
 ```{r}
@@ -266,10 +266,9 @@ high_seas_plot_FUSE_01
 combined_plot_FUSE_01
 ```
 
-## EDGE2 : conservation prioritiy maps
+## EDGE2 : conservation priority maps
 
 ### Budget: 0.3
-
 ```{r}
 # Read both RDS files from the Data folder
 continental_data_EDGE2_03 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
@@ -660,7 +659,151 @@ cat("Results for 0.3 budget level (Priority >= 0.8):\n",
     "\np-value:", format.pval(results_03$p_value, digits = 3))
 ```
 
-## FUSE and EDGE2 : conservation prioritiy bivariate maps
+## FUSE and EDGE2 : maps of differences between indices 
+
+### Budget: 0.1
+```{r, fig.width=15, fig.height=10}
+# First, we need to create a common spatial framework to calculate differences
+# We'll extract the geometry and priority values from both combined datasets
+
+# Extract coordinates from both datasets
+combined_coords_FUSE_10 <- st_coordinates(combined_sf_FUSE_01)
+combined_coords_EDGE2_10 <- st_coordinates(combined_sf_EDGE2_01)
+
+# Create data frames with coordinates and priority values
+combined_data_FUSE_10 <- data.frame(
+  X = combined_coords_FUSE_10[,1],
+  Y = combined_coords_FUSE_10[,2],
+  Priority_FUSE = combined_sf_FUSE_01$Priority
+)
+
+combined_data_EDGE2_10 <- data.frame(
+  X = combined_coords_EDGE2_10[,1],
+  Y = combined_coords_EDGE2_10[,2],
+  Priority_EDGE2 = combined_sf_EDGE2_01$Priority
+)
+
+# Now we need to find matching points and calculate differences
+# We'll use a spatial join approach by creating a spatial points data frame
+
+# Convert to sf objects with point geometry
+points_FUSE_10 <- st_as_sf(combined_data_FUSE_10, coords = c("X", "Y"), crs = mcbryde_thomas_2)
+points_EDGE2_10 <- st_as_sf(combined_data_EDGE2_10, coords = c("X", "Y"), crs = mcbryde_thomas_2)
+
+# Since the points may not exactly match, we'll use the FUSE points as reference
+# and find the nearest EDGE2 point for each FUSE point
+nearest_points_10 <- st_nearest_feature(points_FUSE_10, points_EDGE2_10)
+
+# Create a dataframe with differences
+diff_data_10 <- data.frame(
+  geometry = st_geometry(points_FUSE_10),
+  Priority_FUSE = points_FUSE_10$Priority_FUSE,
+  Priority_EDGE2 = points_EDGE2_10$Priority_EDGE2[nearest_points_10],
+  Priority_Diff = points_FUSE_10$Priority_FUSE - points_EDGE2_10$Priority_EDGE2[nearest_points_10],
+  Region = combined_sf_FUSE_01$Region
+)
+
+# Convert to sf object
+diff_sf_10 <- st_sf(diff_data_10)
+
+# Create the difference plot
+diff_plot_10 <- ggplot() +
+  geom_sf(data = diff_sf_10, 
+          aes(color = Priority_Diff), 
+          size = 0.5, 
+          alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_01, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "red", 
+    mid = "white",
+    high = "blue",
+    midpoint = 0,
+    name = "Priority Difference\n(FUSE - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between FUSE and EDGE2",
+       subtitle = "Continental Waters and High Seas\nBudget: 10%, Replicates: 10\nBlue: Higher priority in FUSE, Red: Higher priority in EDGE2",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display the difference plot
+diff_plot_10
+```
+
+### Budget: 0.3
+```{r, fig.width=15, fig.height=10}
+# First, we need to create a common spatial framework to calculate differences
+# We'll extract the geometry and priority values from both combined datasets
+
+# Extract coordinates from both datasets
+combined_coords_FUSE_30 <- st_coordinates(combined_sf_FUSE_03)
+combined_coords_EDGE2_30 <- st_coordinates(combined_sf_EDGE2_03)
+
+# Create data frames with coordinates and priority values
+combined_data_FUSE_30 <- data.frame(
+  X = combined_coords_FUSE_30[,1],
+  Y = combined_coords_FUSE_30[,2],
+  Priority_FUSE = combined_sf_FUSE_03$Priority
+)
+
+combined_data_EDGE2_30 <- data.frame(
+  X = combined_coords_EDGE2_30[,1],
+  Y = combined_coords_EDGE2_30[,2],
+  Priority_EDGE2 = combined_sf_EDGE2_03$Priority
+)
+
+# Now we need to find matching points and calculate differences
+# We'll use a spatial join approach by creating a spatial points data frame
+
+# Convert to sf objects with point geometry
+points_FUSE_30 <- st_as_sf(combined_data_FUSE_30, coords = c("X", "Y"), crs = mcbryde_thomas_2)
+points_EDGE2_30 <- st_as_sf(combined_data_EDGE2_30, coords = c("X", "Y"), crs = mcbryde_thomas_2)
+
+# Since the points may not exactly match, we'll use the FUSE points as reference
+# and find the nearest EDGE2 point for each FUSE point
+nearest_points_30 <- st_nearest_feature(points_FUSE_30, points_EDGE2_30)
+
+# Create a dataframe with differences
+diff_data_30 <- data.frame(
+  geometry = st_geometry(points_FUSE_30),
+  Priority_FUSE = points_FUSE_30$Priority_FUSE,
+  Priority_EDGE2 = points_EDGE2_30$Priority_EDGE2[nearest_points_30],
+  Priority_Diff = points_FUSE_30$Priority_FUSE - points_EDGE2_30$Priority_EDGE2[nearest_points_30],
+  Region = combined_sf_FUSE_03$Region
+)
+
+# Convert to sf object
+diff_sf_30 <- st_sf(diff_data_30)
+
+# Create the difference plot
+diff_plot_30 <- ggplot() +
+  geom_sf(data = diff_sf_30, 
+          aes(color = Priority_Diff), 
+          size = 0.5, 
+          alpha = 0.7) +
+  geom_sf(data = world_projected_FUSE_03, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "red", 
+    mid = "white",
+    high = "blue",
+    midpoint = 0,
+    name = "Priority Difference\n(FUSE - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between FUSE and EDGE2",
+       subtitle = "Continental Waters and High Seas\nBudget: 30%, Replicates: 10\nBlue: Higher priority in FUSE, Red: Higher priority in EDGE2",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display the difference plot
+diff_plot_30
+```
+
+## FUSE and EDGE2 : conservation priority bivariate maps
 
 ### Budget: 0.3
 
