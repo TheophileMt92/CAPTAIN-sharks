@@ -405,6 +405,390 @@ significant_species(comparison_NT, "No-Take")
 
 **Key message:** \>60% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs).
 
+# Breakdown of under-represented species 
+
+```{r}
+# Identify under-represented species (where actual coverage is less than random)
+under_represented_ALL <- comparison_ALL %>% 
+  filter(difference < 0) %>% 
+  arrange(difference) %>%
+  dplyr::select(species, actual_percentage, mean_percentage, difference, z_score)
+
+under_represented_NT <- comparison_NT %>% 
+  filter(difference < 0) %>% 
+  arrange(difference) %>%
+  dplyr::select(species, actual_percentage, mean_percentage, difference, z_score)
+
+# Count the number of under-represented species
+n_under_ALL <- nrow(under_represented_ALL)
+n_under_NT <- nrow(under_represented_NT)
+
+# Print the counts and percentages
+cat(paste("Under-represented species in ALL MPAs:", n_under_ALL, 
+          "(", round(n_under_ALL/nrow(comparison_ALL)*100, 1), "% of all species)\n"))
+cat(paste("Under-represented species in No-take MPAs:", n_under_NT, 
+          "(", round(n_under_NT/nrow(comparison_NT)*100, 1), "% of all species)\n"))
+
+# Find species that are under-represented in both MPA types
+under_represented_both <- inner_join(
+  under_represented_ALL %>% dplyr::select(species),
+  under_represented_NT %>% dplyr::select(species),
+  by = "species"
+)
+
+n_under_both <- nrow(under_represented_both)
+cat(paste("Species under-represented in both ALL and No-take MPAs:", n_under_both, "\n"))
+
+# Save the lists of under-represented species to CSV files
+write.csv(under_represented_ALL, here::here("Outputs", "under_represented_species_ALL_MPAs.csv"), row.names = FALSE)
+write.csv(under_represented_NT, here::here("Outputs", "under_represented_species_NT_MPAs.csv"), row.names = FALSE)
+write.csv(under_represented_both, here::here("Outputs", "under_represented_species_BOTH_MPAs.csv"), row.names = FALSE)
+
+# Create summary data frames with additional information
+under_rep_ALL_summary <- under_represented_ALL %>%
+  mutate(protection_gap = mean_percentage - actual_percentage,
+         representation_ratio = actual_percentage / mean_percentage) %>%
+  arrange(desc(protection_gap))
+
+under_rep_NT_summary <- under_represented_NT %>%
+  mutate(protection_gap = mean_percentage - actual_percentage,
+         representation_ratio = actual_percentage / mean_percentage) %>%
+  arrange(desc(protection_gap))
+
+# Save the enhanced summary data
+write.csv(under_rep_ALL_summary, here::here("Outputs", "under_represented_species_ALL_MPAs_summary.csv"), row.names = FALSE)
+write.csv(under_rep_NT_summary, here::here("Outputs", "under_represented_species_NT_MPAs_summary.csv"), row.names = FALSE)
+
+# Create a Venn diagram to visualize the overlap
+library(ggVennDiagram)
+library(ggplot2)
+
+species_sets <- list(
+  "All MPAs" = under_represented_ALL$species,
+  "No-take MPAs" = under_represented_NT$species
+)
+
+venn_plot <- ggVennDiagram(species_sets, 
+                          category.names = c("All MPAs", "No-take MPAs"),
+                          label = "count") +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  labs(title = "Overlap of Under-represented Species",
+       subtitle = paste("All MPAs:", n_under_ALL, "species |",
+                       "No-take MPAs:", n_under_NT, "species |",
+                       "Both:", n_under_both, "species"),
+       fill = "Count") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# Display the Venn diagram
+print(venn_plot)
+
+# Optional: Save the Venn diagram
+ggsave(here::here("Outputs", "under_represented_species_venn.png"), 
+       venn_plot, width = 8, height = 6, dpi = 300)
+
+## Compare with IUCN data 
+# Define the function to prepare IUCN data
+prepare_iucn_data <- function(species_data, species_col) {
+  IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+  IUCN$species <- gsub("_", " ", IUCN$Species)
+  
+  # Rename the species column in the input data to match
+  species_data_renamed <- species_data %>%
+    dplyr::rename(species = all_of(species_col))
+  
+  # Ensure we're only joining based on the species name
+  species_data_slim <- species_data_renamed %>%
+    dplyr::select(species)
+  
+  results_IUCN <- inner_join(IUCN, species_data_slim, by="species") %>%
+    mutate(IUCN_status = case_when(
+      iucn_GE == 0 ~ "LC",
+      iucn_GE == 1 ~ "NT",
+      iucn_GE == 2 ~ "VU",
+      iucn_GE == 3 ~ "EN",
+      iucn_GE == 4 ~ "CR",
+      TRUE ~ "Unknown"
+    )) %>%
+    filter(IUCN_status != "Unknown")
+  
+  return(results_IUCN)
+}
+
+# Get species lists for each category
+all_species <- actual_coverage %>% dplyr::select(species)
+under_rep_ALL_species <- under_represented_ALL %>% dplyr::select(species)
+under_rep_NT_species <- under_represented_NT %>% dplyr::select(species)
+
+# Use the prepare_iucn_data function to get IUCN statuses for each group separately
+all_species_iucn <- prepare_iucn_data(all_species, "species")
+under_rep_ALL_iucn <- prepare_iucn_data(under_rep_ALL_species, "species")
+under_rep_NT_iucn <- prepare_iucn_data(under_rep_NT_species, "species")
+
+# Print count of species with IUCN data in each group
+cat("Total species with IUCN data:", nrow(all_species_iucn), "\n")
+cat("Under-represented ALL MPAs species with IUCN data:", nrow(under_rep_ALL_iucn), "\n")
+cat("Under-represented No-take MPAs species with IUCN data:", nrow(under_rep_NT_iucn), "\n")
+
+# Function to summarize IUCN status distribution
+summarize_iucn <- function(data, title) {
+  # Count species by IUCN status
+  iucn_counts <- data %>%
+    group_by(IUCN_status) %>%
+    summarise(
+      count = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      percentage = count / sum(count) * 100,
+      title = title
+    )
+  
+  # Order IUCN statuses correctly
+  iucn_counts$IUCN_status <- factor(iucn_counts$IUCN_status, 
+                                    levels = c("LC", "NT", "VU", "EN", "CR"))
+  
+  return(iucn_counts)
+}
+
+# Get IUCN summaries for each dataset
+all_iucn_summary <- summarize_iucn(all_species_iucn, "All Species")
+under_ALL_iucn_summary <- summarize_iucn(under_rep_ALL_iucn, "Under-represented (All MPAs)")
+under_NT_iucn_summary <- summarize_iucn(under_rep_NT_iucn, "Under-represented (No-take MPAs)")
+
+# Print summaries to check
+print(all_iucn_summary)
+print(under_ALL_iucn_summary)
+print(under_NT_iucn_summary)
+
+# Combine all summaries
+combined_iucn_summary <- bind_rows(
+  all_iucn_summary,
+  under_ALL_iucn_summary,
+  under_NT_iucn_summary
+)
+
+# Create a bar plot comparing IUCN distributions
+iucn_plot <- ggplot(combined_iucn_summary, aes(x = IUCN_status, y = percentage, fill = title)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_fill_manual(values = c("All Species" = "grey70", 
+                               "Under-represented (All MPAs)" = "steelblue", 
+                               "Under-represented (No-take MPAs)" = "darkred")) +
+  labs(
+    title = "IUCN Status Distribution Comparison",
+    subtitle = "All Species vs. Under-represented Species",
+    x = "IUCN Red List Status",
+    y = "Percentage of Species",
+    fill = ""
+  ) +
+  theme_classic() +  # Using theme_classic() for a white background with minimal elements
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white", color = NA),  # Ensure white background
+    plot.background = element_rect(fill = "white", color = NA),   # White background for the entire plot
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+# Display the plot
+print(iucn_plot)
+
+# Save the plot
+ggsave(here::here("Outputs", "under_represented_species_iucn_comparison.png"), 
+       iucn_plot, width = 10, height = 6, dpi = 300)
+
+# Statistical test: Chi-square test to determine if there are significant differences
+# in IUCN status distribution between all species and under-represented species
+
+# Prepare contingency tables
+prepare_contingency <- function(summary_df1, summary_df2) {
+  # Ensure all IUCN categories are present in both datasets
+  all_categories <- c("LC", "NT", "VU", "EN", "CR")
+  
+  # Fill in missing categories with zero
+  for (cat in all_categories) {
+    if (!cat %in% summary_df1$IUCN_status) {
+      summary_df1 <- bind_rows(summary_df1, 
+                              data.frame(IUCN_status = cat, count = 0, 
+                                         percentage = 0, title = unique(summary_df1$title)))
+    }
+    if (!cat %in% summary_df2$IUCN_status) {
+      summary_df2 <- bind_rows(summary_df2, 
+                              data.frame(IUCN_status = cat, count = 0, 
+                                         percentage = 0, title = unique(summary_df2$title)))
+    }
+  }
+  
+  # Order and extract counts
+  df1_ordered <- summary_df1 %>%
+    arrange(factor(IUCN_status, levels = all_categories)) %>%
+    pull(count)
+  
+  df2_ordered <- summary_df2 %>%
+    arrange(factor(IUCN_status, levels = all_categories)) %>%
+    pull(count)
+  
+  # Create contingency table
+  return(rbind(df1_ordered, df2_ordered))
+}
+
+# Perform chi-square tests
+contingency_ALL <- prepare_contingency(all_iucn_summary, under_ALL_iucn_summary)
+rownames(contingency_ALL) <- c("All Species", "Under-represented (All MPAs)")
+colnames(contingency_ALL) <- c("LC", "NT", "VU", "EN", "CR")
+
+contingency_NT <- prepare_contingency(all_iucn_summary, under_NT_iucn_summary)
+rownames(contingency_NT) <- c("All Species", "Under-represented (No-take MPAs)")
+colnames(contingency_NT) <- c("LC", "NT", "VU", "EN", "CR")
+
+# Print contingency tables
+cat("Contingency Table - All MPAs:\n")
+print(contingency_ALL)
+cat("\n")
+
+cat("Contingency Table - No-take MPAs:\n")
+print(contingency_NT)
+cat("\n")
+
+# Run chi-square tests
+chi_test_ALL <- chisq.test(contingency_ALL)
+chi_test_NT <- chisq.test(contingency_NT)
+
+# Print results
+cat("Chi-square Test - All MPAs vs. All Species:\n")
+print(chi_test_ALL)
+cat("\n")
+
+cat("Chi-square Test - No-take MPAs vs. All Species:\n")
+print(chi_test_NT)
+cat("\n")
+
+# Now join the under-represented species with their actual protection data
+under_rep_ALL_full <- under_rep_ALL_iucn %>%
+  left_join(under_represented_ALL, by = "species")
+
+under_rep_NT_full <- under_rep_NT_iucn %>%
+  left_join(under_represented_NT, by = "species")
+
+# Calculate protection gaps by IUCN status
+iucn_protection_gap_ALL <- under_rep_ALL_full %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    mean_protection_gap = mean(mean_percentage - actual_percentage, na.rm = TRUE),
+    mean_actual_coverage = mean(actual_percentage, na.rm = TRUE),
+    mean_expected_coverage = mean(mean_percentage, na.rm = TRUE),
+    n_species = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(MPA_Type = "All MPAs")
+
+iucn_protection_gap_NT <- under_rep_NT_full %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    mean_protection_gap = mean(mean_percentage - actual_percentage, na.rm = TRUE),
+    mean_actual_coverage = mean(actual_percentage, na.rm = TRUE),
+    mean_expected_coverage = mean(mean_percentage, na.rm = TRUE),
+    n_species = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(MPA_Type = "No-take MPAs")
+
+# Combine the protection gap data
+combined_protection_gap <- bind_rows(iucn_protection_gap_ALL, iucn_protection_gap_NT)
+
+# Ensure consistent IUCN status ordering before plotting
+combined_protection_gap$IUCN_status <- factor(combined_protection_gap$IUCN_status, 
+                                             levels = c("LC", "NT", "VU", "EN", "CR"),
+                                             ordered = TRUE)
+
+# Create a plot showing mean protection gap by IUCN status
+protection_gap_plot <- ggplot(combined_protection_gap, 
+                             aes(x = IUCN_status, y = mean_protection_gap, fill = MPA_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = paste0(round(mean_protection_gap, 1), "%")),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5,
+            size = 3) +
+  scale_fill_manual(values = c("All MPAs" = "steelblue", "No-take MPAs" = "darkred")) +
+  labs(
+    title = "Mean Protection Gap by IUCN Status",
+    subtitle = "For Under-represented Species",
+    x = "IUCN Red List Status",
+    y = "Mean Protection Gap (%)",
+    fill = ""
+  ) +
+  theme_classic() +  # Using theme_classic() for a white background
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+# Display the plot
+print(protection_gap_plot)
+
+# Save the plot
+ggsave(here::here("Outputs", "under_represented_species_protection_gap_by_iucn.png"), 
+       protection_gap_plot, width = 10, height = 6, dpi = 300)
+
+# Create a summary table with the IUCN distribution
+iucn_summary_table <- combined_iucn_summary %>%
+  pivot_wider(
+    id_cols = IUCN_status,
+    names_from = title,
+    values_from = c(count, percentage)
+  ) %>%
+  arrange(factor(IUCN_status, levels = c("LC", "NT", "VU", "EN", "CR")))
+
+# Save the summary tables
+write.csv(iucn_summary_table, 
+          here::here("Outputs", "under_represented_species_iucn_summary.csv"), 
+          row.names = FALSE)
+
+write.csv(combined_protection_gap, 
+          here::here("Outputs", "under_represented_species_protection_gap_by_iucn.csv"), 
+          row.names = FALSE)
+
+```
+
+Protection Gap Analysis by IUCN Status
+
+The protection gap plot reveals important conservation biases related to shark species' threat levels.
+
+What is the Protection Gap?
+
+The protection gap represents how much less protection a species is receiving compared to what would be expected if protection was randomly distributed:
+
+$$\text{Protection Gap} = \text{Expected Random Coverage} - \text{Actual Coverage}$$
+
+This measures the "shortfall" in protection for each under-represented species, expressed as a percentage.
+
+Interpretation of the Plot:
+
+1. **X-axis**: IUCN Red List status categories (from least threatened "LC" to most threatened "CR")
+
+2. **Y-axis**: Mean protection gap (%)
+
+3. **Bar colors**: Comparing protection gaps between:
+   - All MPAs (blue)
+   - No-take MPAs (dark red)
+
+4. **Key insights**:
+   - Higher bars indicate larger protection gaps (greater under-representation)
+   - The pattern across threat categories reveals whether more threatened species (VU, EN, CR) have larger or smaller protection gaps than less threatened species (LC, NT)
+
+Significance for Conservation:
+
+This analysis directly addresses whether threatened shark species are adequately represented in marine protected areas. If threatened species (VU, EN, CR) have larger protection gaps, it suggests a concerning bias where species that need protection most are receiving less than expected random coverage.
+
+The comparison between All MPAs and No-take MPAs shows whether the highest level of protection (No-take) displays different biases than the broader set of protected areas.
+
 # Map results of the GAP analyses
 
 Map Standardised Effect Sizes of MPA coverage
@@ -961,6 +1345,7 @@ combined_protection_FUSE_03 <- readRDS(here::here("Data", "combined_protection_F
 
 # FUSE 0.3 budget 
 IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+
 # Remove underscores from species names
 IUCN$species <- gsub("_", " ", IUCN$Species)
 
@@ -1769,6 +2154,79 @@ ggsave(
 )
 
 ```
+
+Comparing Protection Gap with Direct Protection Percentages
+
+Two Different Analytical Approaches:
+
+1. **Direct Protection Analysis** (your previous work):
+   - Compared the actual percentage of range protected for each species against their IUCN status
+   - Found that threatened species (VU, EN, CR) had lower percentages of their ranges protected than non-threatened species (LC, NT)
+   - Measures the absolute level of protection
+
+2. **Protection Gap Analysis** (current work):
+   - Compares the difference between expected random protection and actual protection
+   - Measures whether species are receiving less protection than would be expected by chance
+   - Accounts for factors that might make some species naturally harder to protect
+
+Key Differences:
+
+- **Direct Protection** answers: "How much of each species' range is protected?"
+- **Protection Gap** answers: "Are some species disproportionately under-protected relative to random expectation?"
+
+The protection gap approach controls for factors like species' range sizes, geographic locations, and overlap with human activities that might affect their likelihood of being included in MPAs.
+
+Which is More Relevant?
+
+**Both analyses are valuable and complementary:**
+
+1. **Direct Protection** is more intuitive and directly relevant to conservation targets (e.g., "30x30" initiatives aiming to protect 30% of the ocean by 2030).
+
+2. **Protection Gap** provides stronger evidence of systematic bias in conservation planning, as it accounts for the "null expectation" of protection if MPAs were established without regard to species identity.
+
+Together, these analyses tell a more complete story: threatened sharks not only have lower absolute protection (direct analysis) but are also receiving less protection than would be expected by random chance (protection gap).
+
+This combined evidence strengthens the case for conservation planning that more explicitly prioritizes threatened shark species.
+
+Interpreting Opposing Patterns in Protection Analyses
+
+Key Finding: Contradictory Protection Patterns
+
+Our two analytical approaches revealed an important paradox in shark conservation:
+
+1. **Direct Protection Analysis** showed that threatened species (VU, EN, CR) have **less absolute protection** than non-threatened species.
+
+2. **Protection Gap Analysis** suggests that threatened species have **smaller protection gaps** than non-threatened species.
+
+What This Contradiction Means:
+
+This apparent contradiction reveals a nuanced conservation situation:
+
+**Threatened sharks receive less overall protection** (in absolute terms), but **what protection they do receive appears more targeted than random chance would predict**.
+
+Possible Interpretations:
+
+1. **Intentional Conservation Targeting:**
+   - Conservation efforts may be specifically targeting threatened sharks within their limited ranges
+   - Even though the absolute protection is lower, the placement of MPAs may be more strategic for threatened species
+
+2. **Range Size Effect:**
+   - Threatened species often have smaller or more restricted ranges
+   - Smaller ranges might be easier to protect at higher-than-random rates, even if the absolute area protected remains small
+
+3. **Geographic Concentration:**
+   - Threatened sharks may be concentrated in regions where MPAs are more common
+   - This would result in better-than-random representation despite lower total protection
+
+Conservation Implications:
+
+This complex pattern suggests that:
+
+1. Current protection is insufficient in absolute terms for threatened species
+2. Existing conservation efforts show some evidence of appropriate targeting
+3. Expanding protection should build on this targeting while addressing the overall protection shortfall
+
+This highlights the importance of using multiple analytical approaches to fully understand conservation patterns and avoid oversimplified conclusions about protection effectiveness.
 
 # Relate to species traits
 
