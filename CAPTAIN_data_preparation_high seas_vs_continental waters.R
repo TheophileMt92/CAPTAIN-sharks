@@ -652,6 +652,7 @@ verify_species_match("highseas")
 verify_species_match("continental")
 
 # Bind conservation metrics to a minimum of 10% and 30% ----
+
 create_budget_scenarios <- function(zone_name) {
   # Load harmonized metrics from RDS file
   metrics <- readRDS(here::here("Data", "My dataframes", 
@@ -764,6 +765,8 @@ str(shark_conservation_metrics)
 length(shark_conservation_metrics$EDGE2$transformed[,1])
 summary(as.data.frame(shark_conservation_metrics$metrics$EDGE2$transformed))
 
+summary(shark_conservation_metrics$IUCN$info)
+
 #
 pu_fishing_data <- read.csv(here::here("Data", 
                                        "My Dataframes", 
@@ -790,3 +793,423 @@ shark_conservation_metrics <- jsonlite::fromJSON(here::here("Data", "My datafram
 str(shark_conservation_metrics)
 length(shark_conservation_metrics$metrics$EDGE2$transformed[,1])
 summary(as.data.frame(shark_conservation_metrics$EDGE2$transformed))
+
+# Add IUCN probability metrics to conservation metrics ----
+
+add_iucn_metrics <- function(zone_name) {
+  # Load harmonized metrics from RDS file for both scenarios
+  metrics_10 <- readRDS(here::here("Data", "My dataframes", 
+                                   paste0(zone_name, "_shark_conservation_metrics_10_harmonised.rds")))
+  metrics_30 <- readRDS(here::here("Data", "My dataframes", 
+                                   paste0(zone_name, "_shark_conservation_metrics_30_harmonised.rds")))
+  
+  # Load IUCN data
+  IUCN_final <- readRDS(here::here("Data", "GAP analyses", "sharks_iucn_final.rds"))
+  
+  # Preprocess the IUCN data: replace underscore with space in species names
+  IUCN_final <- IUCN_final %>%
+    dplyr::mutate(Species = gsub("_", " ", Species))
+  
+  # Load species lookup for converting between names and IDs
+  global_species_lookup <- readRDS(here::here("Data", "My dataframes", "global_species_lookup.rds"))
+  
+  # Process each IUCN metric and add it to the metrics structure
+  process_iucn_metric <- function(metrics, metric_name) {
+    # Extract data from IUCN_final
+    iucn_data <- IUCN_final %>%
+      dplyr::select(Species, !!sym(metric_name)) %>%
+      dplyr::rename(amount = !!sym(metric_name)) %>%
+      dplyr::left_join(global_species_lookup, by = c("Species" = "species_name")) %>%
+      dplyr::select(sp = species_id, amount)  # Removed species_name here
+    
+    # For each metric set, only keep species that are in the harmonized datasets
+    existing_species <- unique(metrics$EDGE_P100$transformed$sp)
+    iucn_filtered <- iucn_data %>%
+      dplyr::filter(sp %in% existing_species)
+    
+    # Apply 10% or 30% threshold based on the function argument name
+    if(deparse(substitute(metrics)) == "metrics_10") {
+      iucn_filtered$amount <- pmax(iucn_filtered$amount, 0.1)
+    } else if(deparse(substitute(metrics)) == "metrics_30") {
+      iucn_filtered$amount <- pmax(iucn_filtered$amount, 0.3)
+    }
+    
+    # Create the metric structure
+    new_metric <- list(
+      transformed = iucn_filtered,
+      species = unique(iucn_filtered$sp),
+      info = global_species_lookup %>% 
+        dplyr::filter(species_id %in% unique(iucn_filtered$sp)) %>%
+        dplyr::mutate(!!metric_name := iucn_filtered$amount[match(species_id, iucn_filtered$sp)])
+    )
+    
+    return(new_metric)
+  }
+  
+  # Add each IUCN metric to metrics_10
+  metrics_10$iucn_GE <- process_iucn_metric(metrics_10, "iucn_GE")
+  metrics_10$iucn_P50 <- process_iucn_metric(metrics_10, "iucn_P50")
+  metrics_10$iucn_P100 <- process_iucn_metric(metrics_10, "iucn_P100")
+  
+  # Add each IUCN metric to metrics_30
+  metrics_30$iucn_GE <- process_iucn_metric(metrics_30, "iucn_GE")
+  metrics_30$iucn_P50 <- process_iucn_metric(metrics_30, "iucn_P50")
+  metrics_30$iucn_P100 <- process_iucn_metric(metrics_30, "iucn_P100")
+  
+  # Normalize iucn_GE values (since they're categorical 0-4)
+  metrics_10$iucn_GE$transformed$amount <- metrics_10$iucn_GE$transformed$amount / 4
+  metrics_30$iucn_GE$transformed$amount <- metrics_30$iucn_GE$transformed$amount / 4
+  
+  # Save updated files
+  saveRDS(metrics_10, here::here("Data", "My dataframes", 
+                                 paste0(zone_name, "_shark_conservation_metrics_10_harmonised.rds")))
+  saveRDS(metrics_30, here::here("Data", "My dataframes", 
+                                 paste0(zone_name, "_shark_conservation_metrics_30_harmonised.rds")))
+  
+  # Save as JSON
+  jsonlite::write_json(metrics_10, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_10_harmonised.json")))
+  jsonlite::write_json(metrics_30, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_30_harmonised.json")))
+  
+  # Return counts for verification
+  return(list(
+    scenario_10 = list(
+      total_species = length(unique(metrics_10$EDGE_P100$transformed$sp)),
+      iucn_GE_species = length(metrics_10$iucn_GE$species),
+      iucn_P50_species = length(metrics_10$iucn_P50$species),
+      iucn_P100_species = length(metrics_10$iucn_P100$species)
+    ),
+    scenario_30 = list(
+      total_species = length(unique(metrics_30$EDGE_P100$transformed$sp)),
+      iucn_GE_species = length(metrics_30$iucn_GE$species),
+      iucn_P50_species = length(metrics_30$iucn_P50$species),
+      iucn_P100_species = length(metrics_30$iucn_P100$species)
+    )
+  ))
+}
+
+# Apply to both zones
+continental_results <- add_iucn_metrics("continental")
+highseas_results <- add_iucn_metrics("highseas")
+
+# Print verification
+print("Continental Waters Results:")
+print(continental_results)
+
+print("High Seas Results:")
+print(highseas_results)
+
+# Create a diagnostic report to identify which species are missing 
+
+identify_missing_species <- function(zone_name) {
+  # Load necessary data
+  metrics <- readRDS(here::here("Data", "My dataframes", 
+                                paste0(zone_name, "_shark_conservation_metrics_10_harmonised.rds")))
+  IUCN_final <- readRDS(here::here("Data", "GAP analyses", "sharks_iucn_final.rds"))
+  IUCN_final$Species <- gsub("_", " ", IUCN_final$Species)
+  
+  # Get species from metrics
+  metrics_species <- unique(metrics$EDGE_P100$transformed$sp)
+  
+  # Get global species lookup
+  global_species_lookup <- readRDS(here::here("Data", "My dataframes", "global_species_lookup.rds"))
+  
+  # Get species names that are in metrics
+  metrics_species_names <- global_species_lookup$species_name[global_species_lookup$species_id %in% metrics_species]
+  
+  # Get species names from IUCN
+  iucn_species <- unique(IUCN_final$Species)
+  
+  # Find missing species
+  missing_species <- setdiff(metrics_species_names, iucn_species)
+  
+  # Create diagnostic dataframe
+  diagnostics <- data.frame(
+    species_name = missing_species,
+    species_id = global_species_lookup$species_id[
+      match(missing_species, global_species_lookup$species_name)
+    ]
+  )
+  
+  # Save diagnostics
+  write.csv(diagnostics, 
+            here::here("Data", "My dataframes", 
+                       paste0(zone_name, "_missing_iucn_species.csv")),
+            row.names = FALSE)
+  
+  return(diagnostics)
+}
+
+# Run diagnostics
+continental_missing <- identify_missing_species("continental")
+highseas_missing <- identify_missing_species("highseas")
+
+# Print first few missing species for each zone
+cat("First few missing species in Continental Waters:\n")
+print(head(continental_missing))
+
+cat("\nFirst few missing species in High Seas:\n")
+print(head(highseas_missing))
+
+# Add IUCN probability metrics to conservation metrics with imputation
+add_iucn_metrics_with_imputation <- function(zone_name) {
+  # Load harmonized metrics from RDS file for both scenarios
+  metrics_10 <- readRDS(here::here("Data", "My dataframes", 
+                                   paste0(zone_name, "_shark_conservation_metrics_10_harmonised.rds")))
+  metrics_30 <- readRDS(here::here("Data", "My dataframes", 
+                                   paste0(zone_name, "_shark_conservation_metrics_30_harmonised.rds")))
+  
+  # Load IUCN data
+  IUCN_final <- readRDS(here::here("Data", "GAP analyses", "sharks_iucn_final.rds"))
+  
+  # Preprocess the IUCN data: replace underscore with space in species names
+  IUCN_final <- IUCN_final %>%
+    dplyr::mutate(Species = gsub("_", " ", Species))
+  
+  # Load species lookup for converting between names and IDs
+  global_species_lookup <- readRDS(here::here("Data", "My dataframes", "global_species_lookup.rds"))
+  
+  # Extract species names for all species in the metrics
+  metrics_species <- unique(metrics_10$EDGE_P100$transformed$sp)
+  metrics_species_names <- global_species_lookup$species_name[
+    match(metrics_species, global_species_lookup$species_id)
+  ]
+  
+  # Find missing species
+  missing_species <- data.frame(
+    species_id = metrics_species[!metrics_species %in% 
+                                   global_species_lookup$species_id[
+                                     global_species_lookup$species_name %in% IUCN_final$Species
+                                   ]]
+  )
+  
+  # Join with species lookup to get names
+  missing_species <- missing_species %>%
+    left_join(global_species_lookup, by = c("species_id" = "species_id")) %>%
+    select(species_id, species_name)
+  
+  # Log missing species
+  write.csv(missing_species, 
+            here::here("Data", "My dataframes", 
+                       paste0(zone_name, "_missing_iucn_species.csv")),
+            row.names = FALSE)
+  
+  cat("Number of species missing IUCN data for", zone_name, ":", nrow(missing_species), "out of", length(metrics_species), "\n")
+  
+# Process each IUCN metric and add it to the metrics structure
+process_iucn_metric <- function(metrics, metric_name, threshold) {
+    # Extract data from IUCN_final
+    iucn_data <- IUCN_final %>%
+      dplyr::select(Species, !!sym(metric_name)) %>%
+      dplyr::rename(amount = !!sym(metric_name)) %>%
+      dplyr::left_join(global_species_lookup, by = c("Species" = "species_name")) %>%
+      dplyr::select(sp = species_id, amount)
+    
+    # Get all species from metrics
+    existing_species <- unique(metrics$EDGE_P100$transformed$sp)
+    
+    # Create a complete dataframe with all species, imputing NA for missing ones
+    complete_data <- data.frame(
+      sp = existing_species
+    ) %>%
+      dplyr::left_join(iucn_data, by = "sp")
+    
+    # Imputation strategy
+    if(metric_name == "iucn_GE") {
+      # For categorical data, use mode (most common value)
+      mode_value <- as.numeric(names(sort(table(complete_data$amount), decreasing = TRUE)[1]))
+      if(is.na(mode_value)) mode_value <- 2  # Default to "2" if mode is NA
+      complete_data$amount[is.na(complete_data$amount)] <- mode_value
+    } else {
+      # For probability data, use median
+      median_value <- median(complete_data$amount, na.rm = TRUE)
+      if(is.na(median_value)) median_value <- 0.5  # Default to 0.5 if median is NA
+      complete_data$amount[is.na(complete_data$amount)] <- median_value
+    }
+    
+    # Apply threshold
+    complete_data$amount <- pmax(complete_data$amount, threshold)
+    
+    # For iucn_GE, normalize to 0-1 range
+    if(metric_name == "iucn_GE") {
+      complete_data$amount <- complete_data$amount / 4
+    }
+    
+    # Create the metric structure
+    new_metric <- list(
+      transformed = complete_data,
+      species = existing_species,
+      info = global_species_lookup %>% 
+        dplyr::filter(species_id %in% existing_species) %>%
+        dplyr::mutate(!!metric_name := complete_data$amount[match(species_id, complete_data$sp)])
+    )
+    
+    return(new_metric)
+  }
+  
+  # Add each IUCN metric to metrics_10
+  metrics_10$iucn_GE <- process_iucn_metric(metrics_10, "iucn_GE", 0.1)
+  metrics_10$iucn_P50 <- process_iucn_metric(metrics_10, "iucn_P50", 0.1)
+  metrics_10$iucn_P100 <- process_iucn_metric(metrics_10, "iucn_P100", 0.1)
+  
+  # Add each IUCN metric to metrics_30
+  metrics_30$iucn_GE <- process_iucn_metric(metrics_30, "iucn_GE", 0.3)
+  metrics_30$iucn_P50 <- process_iucn_metric(metrics_30, "iucn_P50", 0.3)
+  metrics_30$iucn_P100 <- process_iucn_metric(metrics_30, "iucn_P100", 0.3)
+  
+  # Save updated files with "_IUCN" in the filenames
+  saveRDS(metrics_10, here::here("Data", "My dataframes", 
+                                 paste0(zone_name, "_shark_conservation_metrics_10_harmonised_IUCN.rds")))
+  saveRDS(metrics_30, here::here("Data", "My dataframes", 
+                                 paste0(zone_name, "_shark_conservation_metrics_30_harmonised_IUCN.rds")))
+  
+  # Save as JSON with "_IUCN" in the filenames
+  jsonlite::write_json(metrics_10, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_10_harmonised_IUCN.json")))
+  jsonlite::write_json(metrics_30, here::here("Data", "My dataframes", 
+                                              paste0(zone_name, "_shark_conservation_metrics_30_harmonised_IUCN.json")))
+  
+  # Return counts for verification
+  return(list(
+    scenario_10 = list(
+      total_species = length(unique(metrics_10$EDGE_P100$transformed$sp)),
+      iucn_GE_species = length(metrics_10$iucn_GE$species),
+      iucn_P50_species = length(metrics_10$iucn_P50$species),
+      iucn_P100_species = length(metrics_10$iucn_P100$species)
+    ),
+    scenario_30 = list(
+      total_species = length(unique(metrics_30$EDGE_P100$transformed$sp)),
+      iucn_GE_species = length(metrics_30$iucn_GE$species),
+      iucn_P50_species = length(metrics_30$iucn_P50$species),
+      iucn_P100_species = length(metrics_30$iucn_P100$species)
+    )
+  ))
+}
+
+# Apply to both zones
+continental_results <- add_iucn_metrics_with_imputation("continental")
+highseas_results <- add_iucn_metrics_with_imputation("highseas")
+
+# Print verification
+print("Continental Waters Results:")
+print(continental_results)
+
+print("High Seas Results:")
+print(highseas_results)
+
+# Function to summarize metrics datasets
+summarize_metrics <- function(zone_name) {
+  # Load the saved files
+  metrics_10_iucn <- readRDS(here::here("Data", "My dataframes", 
+                                        paste0(zone_name, "_shark_conservation_metrics_10_harmonised_IUCN.rds")))
+  metrics_30_iucn <- readRDS(here::here("Data", "My dataframes", 
+                                        paste0(zone_name, "_shark_conservation_metrics_30_harmonised_IUCN.rds")))
+  
+  # Function to summarize a single metric
+  summarize_one_metric <- function(metric, metric_name) {
+    if(is.null(metric) || !is.list(metric) || !("transformed" %in% names(metric))) {
+      return(paste("Metric", metric_name, "is missing or malformed"))
+    }
+    
+    data <- metric$transformed$amount
+    
+    if(length(data) == 0) {
+      return(paste("No data for", metric_name))
+    }
+    
+    summary_stats <- list(
+      metric = metric_name,
+      n = length(data),
+      min = min(data, na.rm = TRUE),
+      max = max(data, na.rm = TRUE),
+      mean = mean(data, na.rm = TRUE),
+      median = median(data, na.rm = TRUE),
+      na_count = sum(is.na(data))
+    )
+    
+    return(summary_stats)
+  }
+  
+  # Get all metric names
+  metric_names_10 <- names(metrics_10_iucn)
+  metric_names_30 <- names(metrics_30_iucn)
+  
+  # Create summaries for 10% scenario
+  summaries_10 <- lapply(metric_names_10, function(name) {
+    summarize_one_metric(metrics_10_iucn[[name]], name)
+  })
+  names(summaries_10) <- metric_names_10
+  
+  # Create summaries for 30% scenario
+  summaries_30 <- lapply(metric_names_30, function(name) {
+    summarize_one_metric(metrics_30_iucn[[name]], name)
+  })
+  names(summaries_30) <- metric_names_30
+  
+  # Special focus on IUCN metrics
+  cat("\n======= IUCN Metrics for", zone_name, "10% scenario =======\n")
+  if("iucn_GE" %in% metric_names_10) {
+    print(summarize_one_metric(metrics_10_iucn$iucn_GE, "iucn_GE"))
+    cat("\nValue distribution for iucn_GE:\n")
+    print(table(metrics_10_iucn$iucn_GE$transformed$amount))
+  }
+  
+  if("iucn_P50" %in% metric_names_10) {
+    print(summarize_one_metric(metrics_10_iucn$iucn_P50, "iucn_P50"))
+  }
+  
+  if("iucn_P100" %in% metric_names_10) {
+    print(summarize_one_metric(metrics_10_iucn$iucn_P100, "iucn_P100"))
+  }
+  
+  cat("\n======= IUCN Metrics for", zone_name, "30% scenario =======\n")
+  if("iucn_GE" %in% metric_names_30) {
+    print(summarize_one_metric(metrics_30_iucn$iucn_GE, "iucn_GE"))
+  }
+  
+  if("iucn_P50" %in% metric_names_30) {
+    print(summarize_one_metric(metrics_30_iucn$iucn_P50, "iucn_P50"))
+  }
+  
+  if("iucn_P100" %in% metric_names_30) {
+    print(summarize_one_metric(metrics_30_iucn$iucn_P100, "iucn_P100"))
+  }
+  
+  # Check structure consistency
+  cat("\n======= Structure check for", zone_name, "=======\n")
+  cat("Number of species in 10% scenario:", length(metrics_10_iucn$EDGE_P100$species), "\n")
+  cat("Number of species in 30% scenario:", length(metrics_30_iucn$EDGE_P100$species), "\n")
+  
+  # Verify JSON files by loading them back
+  json_10 <- jsonlite::read_json(here::here("Data", "My dataframes", 
+                                            paste0(zone_name, "_shark_conservation_metrics_10_harmonised_IUCN.json")))
+  json_30 <- jsonlite::read_json(here::here("Data", "My dataframes", 
+                                            paste0(zone_name, "_shark_conservation_metrics_30_harmonised_IUCN.json")))
+  
+  cat("\nJSON files successfully loaded\n")
+  cat("Metrics in 10% JSON:", paste(names(json_10), collapse=", "), "\n")
+  cat("Metrics in 30% JSON:", paste(names(json_30), collapse=", "), "\n")
+  
+  return(list(
+    metrics_10_summary = summaries_10,
+    metrics_30_summary = summaries_30
+  ))
+}
+
+# Summarize the continental and highseas datasets
+continental_summaries <- summarize_metrics("continental")
+highseas_summaries <- summarize_metrics("highseas")
+
+# Print out some key information from the summaries
+cat("\n====== CONTINENTAL SUMMARIES ======\n")
+cat("10% scenario IUCN metrics:\n")
+print(continental_summaries$metrics_10_summary$iucn_GE)
+print(continental_summaries$metrics_10_summary$iucn_P50)
+print(continental_summaries$metrics_10_summary$iucn_P100)
+
+cat("\n====== HIGHSEAS SUMMARIES ======\n")
+cat("10% scenario IUCN metrics:\n")
+print(highseas_summaries$metrics_10_summary$iucn_GE)
+print(highseas_summaries$metrics_10_summary$iucn_P50)
+print(highseas_summaries$metrics_10_summary$iucn_P100)
