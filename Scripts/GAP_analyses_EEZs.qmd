@@ -1076,6 +1076,241 @@ ggsave(here::here("SES_maps_comparison.png"),
        bg = "white")
 ```
 
+# GAP analyses maps, divide between continental waters and highseas 
+
+```{r}
+# GAP analyses maps: divide between continental waters and high seas using raster approach
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(patchwork)
+library(smoothr)
+library(terra)  # For raster operations
+
+# Load high seas polygon data
+High_seas = st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"))
+
+# Create template raster
+template_raster <- rast(ext(High_seas), resolution = 0.5)
+
+# Rasterize high seas polygon
+highseas_raster <- rasterize(vect(High_seas), template_raster, field = 1, background = 0)
+
+# Plot to verify
+plot(highseas_raster, 
+     main = "High Seas (1) vs Continental Waters (0)",
+     col = c("lightblue", "darkblue"))
+
+# Step 2: Calculate SES for each species in comparison_ALL
+comparison_ALL <- comparison_ALL %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+# Reshape puvsp_marine to long format
+puvsp_long <- puvsp_marine %>%
+  pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
+  filter(!is.na(presence) & presence == 1)
+
+# Join SES data to puvsp_long
+combined_data <- puvsp_long %>%
+  left_join(comparison_ALL, by = c("species" = "species"))
+
+# Calculate mean SES per cell
+mean_ses_per_cell <- combined_data %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+# Convert to terra SpatVector for extraction
+ses_points <- vect(as.data.frame(mean_ses_per_cell), 
+                   geom = c("lon", "lat"), 
+                   crs = crs(highseas_raster))
+
+# Extract values from highseas raster
+highseas_values <- terra::extract(highseas_raster, ses_points)
+
+# Add highseas classification back to the dataframe
+mean_ses_per_cell$is_highseas <- highseas_values[, 2]
+mean_ses_per_cell$is_highseas[is.na(mean_ses_per_cell$is_highseas)] <- 0  # Set NA to 0 (continental)
+
+# Convert to sf objects for mapping
+mean_ses_sf <- st_as_sf(mean_ses_per_cell, coords = c("lon", "lat"), crs = 4326)
+
+# Split into high seas and continental waters
+high_seas_points <- mean_ses_sf[mean_ses_sf$is_highseas == 1, ]
+continental_points <- mean_ses_sf[mean_ses_sf$is_highseas == 0, ]
+
+# Define the projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Project all datasets
+high_seas_projected <- st_transform(high_seas_points, crs = mcbryde_thomas_2)
+continental_projected <- st_transform(continental_points, crs = mcbryde_thomas_2)
+land_projected <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create plot for continental waters
+continental_plot <- ggplot() +
+  geom_sf(data = continental_projected, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(title = "Standardized Effect Size (SES) in Continental Waters",
+       subtitle = "All MPAs",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Create plot for high seas
+high_seas_plot <- ggplot() +
+  geom_sf(data = high_seas_projected, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(title = "Standardized Effect Size (SES) in High Seas",
+       subtitle = "All MPAs",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Save individual plots
+ggsave(here::here("outputs","SES_map_continental_ALL.png"), 
+       continental_plot,
+       width = 10,
+       height = 6,
+       dpi = 300,
+       bg = "white")
+
+ggsave(here::here("outputs","SES_map_highseas_ALL.png"), 
+       high_seas_plot,
+       width = 10,
+       height = 6,
+       dpi = 300,
+       bg = "white")
+
+# Now repeat for No-take MPAs
+# Calculate SES for No-take
+comparison_NT <- comparison_NT %>%
+  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+
+combined_data_NT <- puvsp_long %>%
+  left_join(comparison_NT, by = c("species" = "species"))
+
+mean_ses_per_cell_NT <- combined_data_NT %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  ungroup()
+
+# Convert to terra SpatVector for extraction
+ses_points_NT <- vect(as.data.frame(mean_ses_per_cell_NT), 
+                      geom = c("lon", "lat"), 
+                      crs = crs(highseas_raster))
+
+# Extract values from highseas raster
+highseas_values_NT <- terra::extract(highseas_raster, ses_points_NT)
+
+# Add highseas classification back to the dataframe
+mean_ses_per_cell_NT$is_highseas <- highseas_values_NT[, 2]
+mean_ses_per_cell_NT$is_highseas[is.na(mean_ses_per_cell_NT$is_highseas)] <- 0  # Set NA to 0 (continental)
+
+# Convert to sf for mapping
+mean_ses_sf_NT <- st_as_sf(mean_ses_per_cell_NT, coords = c("lon", "lat"), crs = 4326)
+
+# Split into high seas and continental waters
+high_seas_points_NT <- mean_ses_sf_NT[mean_ses_sf_NT$is_highseas == 1, ]
+continental_points_NT <- mean_ses_sf_NT[mean_ses_sf_NT$is_highseas == 0, ]
+
+# Project
+high_seas_projected_NT <- st_transform(high_seas_points_NT, crs = mcbryde_thomas_2)
+continental_projected_NT <- st_transform(continental_points_NT, crs = mcbryde_thomas_2)
+
+# Create plot for continental waters - No-take MPAs
+continental_plot_NT <- ggplot() +
+  geom_sf(data = continental_projected_NT, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(title = "Standardized Effect Size (SES) in Continental Waters",
+       subtitle = "No-take MPAs",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Create plot for high seas - No-take MPAs
+high_seas_plot_NT <- ggplot() +
+  geom_sf(data = high_seas_projected_NT, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    midpoint = 0,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(title = "Standardized Effect Size (SES) in High Seas",
+       subtitle = "No-take MPAs",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Save individual No-take plots
+ggsave(here::here("outputs","SES_map_continental_NT.png"), 
+       continental_plot_NT,
+       width = 10,
+       height = 6,
+       dpi = 300,
+       bg = "white")
+
+ggsave(here::here("outputs","SES_map_highseas_NT.png"), 
+       high_seas_plot_NT,
+       width = 10,
+       height = 6,
+       dpi = 300,
+       bg = "white")
+```
+
 # Relate to IUCN status
 
 1.  Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with difference tests between categories

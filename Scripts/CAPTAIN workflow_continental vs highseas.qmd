@@ -728,6 +728,13 @@ diff_plot_10 <- ggplot() +
        x = NULL, y = NULL) +
   my_theme
 
+# Save the difference plot
+ggsave(filename = here::here("Outputs","FUSE_EDGE2_priority_difference_map_10.png"), 
+       plot = diff_plot_10,
+       width = 12, 
+       height = 8, 
+       dpi = 300)
+
 # Display the difference plot
 diff_plot_10
 ```
@@ -798,6 +805,13 @@ diff_plot_30 <- ggplot() +
        subtitle = "Continental Waters and High Seas\nBudget: 30%, Replicates: 10\nBlue: Higher priority in FUSE, Red: Higher priority in EDGE2",
        x = NULL, y = NULL) +
   my_theme
+
+# Save the difference plot
+ggsave(filename = here::here("Outputs","FUSE_EDGE2_priority_difference_map_30.png"), 
+       plot = diff_plot_30,
+       width = 12, 
+       height = 8, 
+       dpi = 300)
 
 # Display the difference plot
 diff_plot_30
@@ -1652,6 +1666,15 @@ grid_plot <- grid.arrange(
   widths = c(1, 1),
   heights = c(1, 1)
 )
+
+# Save the grid plot to a PNG file
+png(filename = here::here("Outputs","protection_fuse_analysis_grid.png"), 
+    width = 12, 
+    height = 10, 
+    units = "in", 
+    res = 300)
+grid.draw(grid_plot)
+dev.off()
 
 # Save the combined protection data
 saveRDS(combined_protection_FUSE_03, file = here::here("Data", "combined_protection_FUSE_03.rds"))
@@ -2544,4 +2567,149 @@ grid_plot <- grid.arrange(
 
 # Save the combined protection data
 saveRDS(combined_protection_EDGE2_01, file = here::here("Data", "combined_protection_EDGE2_01.rds"))
+```
+
+
+## IUCN conservation priority maps 
+
+### IUCN GE 
+
+```{r}
+# Read the IUCN RDS file we just created
+IUCN_GE_data <- readRDS(here::here("Data","IUCN_GE_full_results_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+library(rnaturalearth)
+library(sf)
+library(dplyr)
+library(ggplot2)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform IUCN dataset to sf object and project
+IUCN_GE_sf <- st_as_sf(IUCN_GE_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# IUCN GE Conservation Priority Map
+IUCN_GE_plot <- ggplot() +
+  geom_sf(data = IUCN_GE_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "IUCN GE Conservation Priorities",
+       subtitle = "Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display the plot
+IUCN_GE_plot
+
+# Optionally save the plot
+ggsave(here::here("Outputs","IUCN_GE_Conservation_Priority_Map.png"), IUCN_GE_plot, width = 12, height = 8, dpi = 300)
+```
+
+### IUCN P100 10
+
+```{r}
+# Read the IUCN RDS file we just created
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+library(rnaturalearth)
+library(sf)
+library(dplyr)
+library(ggplot2)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform IUCN dataset to sf object and project
+IUCN_P100_sf <- st_as_sf(IUCN_P100_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# IUCN P100 Conservation Priority Map
+IUCN_P100_plot <- ggplot() +
+  geom_sf(data = IUCN_P100_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "IUCN P100 Conservation Priorities",
+       subtitle = "Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display the plot
+IUCN_P100_plot
+
+# Optionally save the plot
+ggsave(here::here("Outputs","IUCN_P100_Conservation_Priority_Map.png"), IUCN_P100_plot, width = 12, height = 8, dpi = 300)
 ```
