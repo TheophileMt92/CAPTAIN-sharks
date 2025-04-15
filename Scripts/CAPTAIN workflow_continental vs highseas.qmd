@@ -972,10 +972,10 @@ combined_plot <- grid.arrange(
 ## FUSE and EDGE2: conservation priority bivariate maps
 ## Budget: 0.3
 # Read all RDS files
-edge_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
-edge_highseas <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.3_replicates10.rds"))
-fuse_continental <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
-fuse_highseas <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+edge_continental_30 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.3_replicates10.rds"))
+edge_highseas_30 <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.3_replicates10.rds"))
+fuse_continental_30 <- readRDS(here::here("Data/FUSE_continental_full_results_averaged_budget0.3_replicates10.rds"))
+fuse_highseas_30 <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.3_replicates10.rds"))
 
 # Get world map data and set projection
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -1012,8 +1012,8 @@ process_data <- function(edge_data, fuse_data) {
 }
 
 # Process continental and high seas data
-continental_sf <- process_data(edge_continental, fuse_continental)
-highseas_sf <- process_data(edge_highseas, fuse_highseas)
+continental_sf_30 <- process_data(edge_continental_30, fuse_continental_30)
+highseas_sf_30 <- process_data(edge_highseas_30, fuse_highseas_30)
 
 # Project the world map
 world_projected <- st_transform(world, crs = mcbryde_thomas_2)
@@ -1038,8 +1038,8 @@ get_color <- function(edge, fuse) {
 }
 
 # Apply colors to all datasets
-continental_sf$new_color <- mapply(get_color, continental_sf$EDGE_Priority_Norm, continental_sf$FUSE_Priority_Norm)
-highseas_sf$new_color <- mapply(get_color, highseas_sf$EDGE_Priority_Norm, highseas_sf$FUSE_Priority_Norm)
+continental_sf_30$new_color <- mapply(get_color, continental_sf_30$EDGE_Priority_Norm, continental_sf_30$FUSE_Priority_Norm)
+highseas_sf_30$new_color <- mapply(get_color, highseas_sf_30$EDGE_Priority_Norm, highseas_sf_30$FUSE_Priority_Norm)
 
 # Create plot function (no title)
 create_bivariate_plot <- function(data_sf) {
@@ -1055,7 +1055,7 @@ create_bivariate_plot <- function(data_sf) {
 }
 
 # Create legend
-legend_plot <- bi_legend(pal = map_pal, dim = 4,
+legend_plot_30 <- bi_legend(pal = map_pal, dim = 4,
                         xlab = 'EDGE2',
                         ylab = 'FUSE',
                         size = 4) + # Make the legend larger
@@ -1065,54 +1065,87 @@ legend_plot <- bi_legend(pal = map_pal, dim = 4,
   )
 
 # Create the individual plots
-continental_bivariate <- create_bivariate_plot(continental_sf)
-highseas_bivariate <- create_bivariate_plot(highseas_sf)
+continental_bivariate_30 <- create_bivariate_plot(continental_sf_30)
+highseas_bivariate_30 <- create_bivariate_plot(highseas_sf_30)
 
 # Create the continental figure with legend
-continental_layout <- rbind(
+continental_layout_30 <- rbind(
   c(1, 1, 1),
   c(1, 1, 1),
   c(1, 1, 1),
   c(2, 2, 2)
 )
 
-continental_with_legend <- grid.arrange(
-  continental_bivariate,
-  legend_plot,
-  layout_matrix = continental_layout,
+continental_with_legend_30 <- grid.arrange(
+  continental_bivariate_30,
+  legend_plot_30,
+  layout_matrix = continental_layout_30,
   heights = c(0.3, 0.3, 0.3, 0.2)
 )
 
-# Save the continental figure
-ggsave(here::here("continental_bivariate_map_03.png"), 
-       continental_with_legend,
+# Save the continental figure with _30 suffix
+ggsave(here::here("continental_bivariate_map_03_30.png"), 
+       continental_with_legend_30,
        width = 10, 
        height = 10,
        dpi = 300,
        bg = "white")
 
 # Create the high seas figure with legend
-highseas_layout <- rbind(
+highseas_layout_30 <- rbind(
   c(1, 1, 1),
   c(1, 1, 1),
   c(1, 1, 1),
   c(2, 2, 2)
 )
 
-highseas_with_legend <- grid.arrange(
-  highseas_bivariate,
-  legend_plot,
-  layout_matrix = highseas_layout,
+highseas_with_legend_30 <- grid.arrange(
+  highseas_bivariate_30,
+  legend_plot_30,
+  layout_matrix = highseas_layout_30,
   heights = c(0.3, 0.3, 0.3, 0.2)
 )
 
-# Save the high seas figure
-ggsave(here::here("highseas_bivariate_map_03.png"), 
-       highseas_with_legend,
+# Save the high seas figure with _30 suffix
+ggsave(here::here("highseas_bivariate_map_03_30.png"), 
+       highseas_with_legend_30,
        width = 10, 
        height = 10,
        dpi = 300,
        bg = "white")
+
+# Keep the rest of your grid.arrange code the same
+title <- textGrob("Bivariate Maps of EDGE2 and FUSE Priorities", 
+                 gp = gpar(fontsize = 16, font = 2))
+subtitle <- textGrob("Budget: 30%, Replicates: 10", 
+                    gp = gpar(fontsize = 12))
+
+# Create a combined title with proper spacing
+title_combined <- gtable::gtable_matrix(
+  name = "title", 
+  grobs = matrix(list(title, subtitle), ncol = 1), 
+  widths = unit(1, "npc"),
+  heights = unit(c(1, 1), "lines")
+)
+
+combined_plot_30 <- grid.arrange(
+  continental_bivariate_30,
+  highseas_bivariate_30,
+  legend_plot,
+  layout_matrix = layout,
+  heights = c(0.32, 0.32, 0.15),
+  widths = unit(c(15, 15, 15), "inches"),
+  top = title_combined
+)
+
+# Save the combined plot for 30% budget
+ggsave(here::here("outputs","combined_bivariate_map_30.png"), 
+       combined_plot_30,
+       width = 15, 
+       height = 12,
+       dpi = 300,
+       bg = "white")
+
 ```
 
 ### Budget: 0.3 with more bins 
@@ -1473,10 +1506,10 @@ combined_plot <- grid.arrange(
 
 ```{r, fig.width=15, fig.height=20}
 # Read all RDS files for budget 0.1
-edge_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
-edge_highseas <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.1_replicates10.rds"))
-fuse_continental <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
-fuse_highseas <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+edge_continental_10 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+edge_highseas_10 <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+fuse_continental_10 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+fuse_highseas_10 <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.1_replicates10.rds"))
 
 # Get world map data and set projection
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -1512,9 +1545,9 @@ process_data <- function(edge_data, fuse_data) {
   return(data_sf)
 }
 
-# Process continental and high seas data
-continental_sf <- process_data(edge_continental, fuse_continental)
-highseas_sf <- process_data(edge_highseas, fuse_highseas)
+# Process continental and high seas data with _10 suffix
+continental_sf_10 <- process_data(edge_continental_10, fuse_continental_10)
+highseas_sf_10 <- process_data(edge_highseas_10, fuse_highseas_10)
 
 # Project the world map
 world_projected <- st_transform(world, crs = mcbryde_thomas_2)
@@ -1538,9 +1571,9 @@ get_color <- function(edge, fuse) {
   return(map_pal[(as.numeric(fuse_class)-1)*4 + as.numeric(edge_class)])
 }
 
-# Apply colors to all datasets
-continental_sf$new_color <- mapply(get_color, continental_sf$EDGE_Priority_Norm, continental_sf$FUSE_Priority_Norm)
-highseas_sf$new_color <- mapply(get_color, highseas_sf$EDGE_Priority_Norm, highseas_sf$FUSE_Priority_Norm)
+# Apply colors to all datasets with _10 suffix
+continental_sf_10$new_color <- mapply(get_color, continental_sf_10$EDGE_Priority_Norm, continental_sf_10$FUSE_Priority_Norm)
+highseas_sf_10$new_color <- mapply(get_color, highseas_sf_10$EDGE_Priority_Norm, highseas_sf_10$FUSE_Priority_Norm)
 
 # Create plot function (no title)
 create_bivariate_plot <- function(data_sf) {
@@ -1556,7 +1589,7 @@ create_bivariate_plot <- function(data_sf) {
 }
 
 # Create legend
-legend_plot <- bi_legend(pal = map_pal, dim = 4,
+legend_plot_10 <- bi_legend(pal = map_pal, dim = 4,
                         xlab = 'EDGE2',
                         ylab = 'FUSE',
                         size = 4) + # Make the legend larger
@@ -1565,55 +1598,89 @@ legend_plot <- bi_legend(pal = map_pal, dim = 4,
     axis.text = element_blank()  # No axis text (just arrows)
   )
 
-# Create the individual plots
-continental_bivariate <- create_bivariate_plot(continental_sf)
-highseas_bivariate <- create_bivariate_plot(highseas_sf)
+# Create the individual plots with _10 suffix
+continental_bivariate_10 <- create_bivariate_plot(continental_sf_10)
+highseas_bivariate_10 <- create_bivariate_plot(highseas_sf_10)
 
 # Create the continental figure with legend
-continental_layout <- rbind(
+continental_layout_10 <- rbind(
   c(1, 1, 1),
   c(1, 1, 1),
   c(1, 1, 1),
   c(2, 2, 2)
 )
 
-continental_with_legend <- grid.arrange(
-  continental_bivariate,
-  legend_plot,
-  layout_matrix = continental_layout,
+continental_with_legend_10 <- grid.arrange(
+  continental_bivariate_10,
+  legend_plot_10,
+  layout_matrix = continental_layout_10,
   heights = c(0.3, 0.3, 0.3, 0.2)
 )
 
-# Save the continental figure
-ggsave(here::here("continental_bivariate_map_budget01.png"), 
-       continental_with_legend,
+# Save the continental figure with _10 suffix
+ggsave(here::here("continental_bivariate_map_budget01_10.png"), 
+       continental_with_legend_10,
        width = 10, 
        height = 10,
        dpi = 300,
        bg = "white")
 
 # Create the high seas figure with legend
-highseas_layout <- rbind(
+highseas_layout_10 <- rbind(
   c(1, 1, 1),
   c(1, 1, 1),
   c(1, 1, 1),
   c(2, 2, 2)
 )
 
-highseas_with_legend <- grid.arrange(
-  highseas_bivariate,
-  legend_plot,
-  layout_matrix = highseas_layout,
+highseas_with_legend_10 <- grid.arrange(
+  highseas_bivariate_10,
+  legend_plot_10,
+  layout_matrix = highseas_layout_10,
   heights = c(0.3, 0.3, 0.3, 0.2)
 )
 
-# Save the high seas figure
-ggsave(here::here("highseas_bivariate_map_budget01.png"), 
-       highseas_with_legend,
+# Save the high seas figure with _10 suffix
+ggsave(here::here("highseas_bivariate_map_budget01_10.png"), 
+       highseas_with_legend_10,
        width = 10, 
        height = 10,
        dpi = 300,
        bg = "white")
+
+
+# 
+title <- textGrob("Bivariate Maps of EDGE2 and FUSE Priorities", 
+                 gp = gpar(fontsize = 16, font = 2))
+subtitle <- textGrob("Budget: 10%, Replicates: 10", 
+                    gp = gpar(fontsize = 12))
+
+# Create a combined title with proper spacing
+title_combined <- gtable::gtable_matrix(
+  name = "title", 
+  grobs = matrix(list(title, subtitle), ncol = 1), 
+  widths = unit(1, "npc"),
+  heights = unit(c(1, 1), "lines")
+)
+
+combined_plot_10 <- grid.arrange(
+  continental_bivariate_10,
+  highseas_bivariate_10,
+  legend_plot,
+  layout_matrix = layout,
+  heights = c(0.32, 0.32, 0.15),
+  widths = unit(c(15, 15, 15), "inches"),
+  top = title_combined
+)
+
+# Save the combined plot for 10% budget
+ggsave(here::here("outputs","combined_bivariate_map_10.png"), 
+       combined_plot_10,
+       width = 15, 
+       height = 12,
+       dpi = 300,
+       bg = "white")
+
 ```
 
 ### Manuscript maps : combined highseas and continental waters
