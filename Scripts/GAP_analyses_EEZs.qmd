@@ -2232,7 +2232,7 @@ ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width =
 
 ```
 
-### Ridgeline chart
+### Ridgeline chart : six charts 
 
 ```{r}
 library(tidyverse)
@@ -2463,6 +2463,106 @@ This complex pattern suggests that:
 
 This highlights the importance of using multiple analytical approaches to fully understand conservation patterns and avoid oversimplified conclusions about protection effectiveness.
 
+### Ridgeline chart : six charts 
+
+```{r}
+library(tidyverse)
+library(ggridges)
+
+# 1. First prepare the IUCN data and function
+prepare_iucn_data <- function(species_data, species_col) {
+  IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+  IUCN$species <- gsub("_", " ", IUCN$Species)
+  
+  # Rename the species column in the input data to match
+  species_data <- species_data %>%
+    dplyr::rename(species = all_of(species_col))
+  
+  results_IUCN <- left_join(IUCN, species_data, by="species") %>%
+    mutate(IUCN_status = case_when(
+      iucn_GE == 0 ~ "LC",
+      iucn_GE == 1 ~ "NT",
+      iucn_GE == 2 ~ "VU",
+      iucn_GE == 3 ~ "EN",
+      iucn_GE == 4 ~ "CR",
+      TRUE ~ "Unknown"
+    )) %>%
+    filter(IUCN_status != "Unknown")
+  
+  return(results_IUCN)
+}
+
+# 2. Prepare all datasets
+mpa_data <- results %>%
+  dplyr::select(species, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
+  dplyr::rename(Species = species)
+
+# 3. Create separate dataframes with IUCN status
+# Get only the no-take MPAs data directly
+notake_mpa_iucn <- prepare_iucn_data(mpa_data, "Species") %>%
+  dplyr::select(species, IUCN_status, percentage_in_NT_MPA) %>%
+  rename(protection = percentage_in_NT_MPA)
+
+# 6. Create the plot
+iucn_colors <- c(
+  "CR" = "#D81E05",
+  "EN" = "#FC7F3F",
+  "VU" = "#FEC748",
+  "NT" = "#58AFFF",
+  "LC" = "#38AB38"
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+# Modify the plot - now without faceting since we only have one scenario
+rdplot = ggplot(notake_mpa_iucn, 
+       aes(x = factor(IUCN_status, levels = iucn_order), 
+           y = protection)) +
+  geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
+              trim = FALSE, 
+              alpha = 0.5) +
+  geom_jitter(width = 0.1, 
+              size = 0.4, 
+              alpha = 0.5, 
+              color = "darkgray") +
+  geom_boxplot(width = 0.1, 
+               fill = "white", 
+               color = "black", 
+               outlier.shape = NA, 
+               alpha = 0.8) +
+  labs(x = "IUCN Red List threat status", 
+       y = "Range protected (%)",
+       title = "Current no-take MPAs overlaps") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank()
+  ) +
+  scale_x_discrete(limits = iucn_order) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_continuous(limits = c(0, 65),
+                    breaks = seq(0, 65, 20))
+rdplot
+
+# Add white background to the plot
+rdplot_white = rdplot + 
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+# Save only PNG with white background
+ggsave(
+  filename = here::here("outputs","notake_mpa_protection.png"),
+  plot = rdplot_white,
+  width = 6,
+  height = 5,
+  dpi = 300,
+  bg = "white"  # This ensures white background in the saved file
+)
+```
 # Relate to species traits
 
 Relate the percentage of species range overlapped by MPAs to the trait space of species. 1) Use Pearson correlation tests between the axes of the trait space and MPA coverage. 2) Predict relationships from a GAM into the kernel density gridded trait space.
