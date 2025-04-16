@@ -264,6 +264,37 @@ combined_plot_FUSE_01 <- ggplot() +
 continental_plot_FUSE_01 
 high_seas_plot_FUSE_01 
 combined_plot_FUSE_01
+
+# Save Continental Waters Plot
+ggsave(
+  filename = here::here("outputs","continental_priorities_FUSE_01.png"),
+  plot = continental_plot_FUSE_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+# Save High Seas Plot
+ggsave(
+  filename = here::here("outputs","high_seas_priorities_FUSE_01.png"),
+  plot = high_seas_plot_FUSE_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+# Save Combined Plot
+ggsave(
+  filename = here::here("outputs","combined_priorities_FUSE_01.png"),
+  plot = combined_plot_FUSE_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
 ```
 
 ## EDGE2 : conservation priority maps
@@ -495,6 +526,36 @@ combined_plot_EDGE2_01 <- ggplot() +
 continental_plot_EDGE2_01 
 high_seas_plot_EDGE2_01 
 combined_plot_EDGE2_01
+
+# Save Continental Waters Plot
+ggsave(
+  filename = here::here("outputs","continental_priorities_EDGE2_01.png"),
+  plot = continental_plot_EDGE2_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+# Save High Seas Plot
+ggsave(
+  filename = here::here("outputs","high_seas_priorities_EDGE2_01.png"),
+  plot = high_seas_plot_EDGE2_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+# Save Combined Plot
+ggsave(
+  filename = here::here("outputs","combined_priorities_EDGE2_01.png"),
+  plot = combined_plot_EDGE2_01,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
 ```
 
 ## Congruence tests 
@@ -661,6 +722,7 @@ cat("Results for 0.3 budget level (Priority >= 0.8):\n",
 
 ## FUSE and EDGE2 : maps of differences between indices 
 
+### Combined continental and high seas data
 ### Budget: 0.1
 ```{r, fig.width=15, fig.height=10}
 # First, we need to create a common spatial framework to calculate differences
@@ -816,6 +878,245 @@ ggsave(filename = here::here("Outputs","FUSE_EDGE2_priority_difference_map_30.pn
 # Display the difference plot
 diff_plot_30
 ```
+
+### Continental waters only
+### Budget: 0.1
+```{r, fig.width=15, fig.height=10}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+
+# Read continental data for both methods
+continental_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+continental_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform both datasets to sf objects
+continental_sf_FUSE_01 <- st_as_sf(continental_data_FUSE_01, coords = c("Longitude", "Latitude"), crs = 4326)
+continental_sf_EDGE2_01 <- st_as_sf(continental_data_EDGE2_01, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract coordinates before joining
+fuse_coords <- st_coordinates(continental_sf_FUSE_01)
+continental_sf_FUSE_01$Longitude <- fuse_coords[,1]
+continental_sf_FUSE_01$Latitude <- fuse_coords[,2]
+
+edge_coords <- st_coordinates(continental_sf_EDGE2_01)
+continental_sf_EDGE2_01$Longitude <- edge_coords[,1]
+continental_sf_EDGE2_01$Latitude <- edge_coords[,2]
+
+# Create dataframes without geometry for joining
+fuse_df <- continental_sf_FUSE_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(FUSE_Priority = Priority)
+
+edge_df <- continental_sf_EDGE2_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(EDGE2_Priority = Priority)
+
+# Join the dataframes by coordinates
+merged_priorities <- full_join(
+  fuse_df, 
+  edge_df, 
+  by = c("Longitude", "Latitude")
+)
+
+# Calculate the difference (FUSE - EDGE2)
+merged_priorities <- merged_priorities %>%
+  mutate(Priority_Difference = FUSE_Priority - EDGE2_Priority)
+
+# Convert back to sf
+difference_sf <- st_as_sf(merged_priorities, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create the difference plot
+difference_plot <- ggplot() +
+  geom_sf(data = difference_sf, aes(color = Priority_Difference), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "blue",      # EDGE2 higher priority
+    mid = "white",     # Similar priority
+    high = "red",      # FUSE higher priority
+    midpoint = 0,
+    name = "Priority Difference\n(FUSE - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between FUSE and EDGE2",
+       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL,
+       caption = "Positive values (red): FUSE assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
+  my_theme
+
+# Display the plot
+difference_plot
+
+# Save the difference plot
+ggsave(
+  filename = here::here("outputs", "continental_priorities_FUSE_vs_EDGE2_difference.png"),
+  plot = difference_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+### High Seas waters only
+### Budget: 0.1
+```{r, fig.width=15, fig.height=10}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+
+# Read high seas data for both methods
+high_seas_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+high_seas_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_highseas_results_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform both datasets to sf objects
+high_seas_sf_FUSE_01 <- st_as_sf(high_seas_data_FUSE_01, coords = c("Longitude", "Latitude"), crs = 4326)
+high_seas_sf_EDGE2_01 <- st_as_sf(high_seas_data_EDGE2_01, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract coordinates before joining
+fuse_coords <- st_coordinates(high_seas_sf_FUSE_01)
+high_seas_sf_FUSE_01$Longitude <- fuse_coords[,1]
+high_seas_sf_FUSE_01$Latitude <- fuse_coords[,2]
+
+edge_coords <- st_coordinates(high_seas_sf_EDGE2_01)
+high_seas_sf_EDGE2_01$Longitude <- edge_coords[,1]
+high_seas_sf_EDGE2_01$Latitude <- edge_coords[,2]
+
+# Create dataframes without geometry for joining
+fuse_df <- high_seas_sf_FUSE_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(FUSE_Priority = Priority)
+
+edge_df <- high_seas_sf_EDGE2_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(EDGE2_Priority = Priority)
+
+# Join the dataframes by coordinates
+merged_priorities <- full_join(
+  fuse_df, 
+  edge_df, 
+  by = c("Longitude", "Latitude")
+)
+
+# Calculate the difference (FUSE - EDGE2)
+merged_priorities <- merged_priorities %>%
+  mutate(Priority_Difference = FUSE_Priority - EDGE2_Priority)
+
+# Convert back to sf
+difference_sf <- st_as_sf(merged_priorities, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create the difference plot for high seas
+high_seas_difference_plot <- ggplot() +
+  geom_sf(data = difference_sf, aes(color = Priority_Difference), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "blue",      # EDGE2 higher priority
+    mid = "white",     # Similar priority
+    high = "red",      # FUSE higher priority
+    midpoint = 0,
+    name = "Priority Difference\n(FUSE - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between FUSE and EDGE2",
+       subtitle = "High Seas Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL,
+       caption = "Positive values (red): FUSE assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
+  my_theme
+
+# Display the plot
+high_seas_difference_plot
+
+# Save the difference plot
+ggsave(
+  filename = here::here("outputs", "high_seas_priorities_FUSE_vs_EDGE2_difference.png"),
+  plot = high_seas_difference_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
 
 ## FUSE and EDGE2 : conservation priority bivariate maps
 
@@ -3083,4 +3384,704 @@ IUCN_P100_plot
 
 # Optionally save the plot
 ggsave(here::here("Outputs","IUCN_P100_Conservation_Priority_Map.png"), IUCN_P100_plot, width = 12, height = 8, dpi = 300)
+```
+
+### Differences between IUCN P100 10 and FUSE continental waters only
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+
+# Read the data
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+continental_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform both datasets to sf objects
+P100_sf <- st_as_sf(IUCN_P100_data, coords = c("Longitude", "Latitude"), crs = 4326)
+continental_sf_FUSE_01 <- st_as_sf(continental_data_FUSE_01, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract coordinates before joining
+p100_coords <- st_coordinates(P100_sf)
+P100_sf$Longitude <- p100_coords[,1]
+P100_sf$Latitude <- p100_coords[,2]
+
+fuse_coords <- st_coordinates(continental_sf_FUSE_01)
+continental_sf_FUSE_01$Longitude <- fuse_coords[,1]
+continental_sf_FUSE_01$Latitude <- fuse_coords[,2]
+
+# Create dataframes without geometry for joining
+p100_df <- P100_sf %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(P100_Priority = Priority)
+
+fuse_df <- continental_sf_FUSE_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(FUSE_Priority = Priority)
+
+# Join the dataframes by coordinates
+merged_priorities <- inner_join(
+  fuse_df, 
+  p100_df, 
+  by = c("Longitude", "Latitude")
+)
+
+# Calculate the difference (P100 - FUSE)
+merged_priorities <- merged_priorities %>%
+  mutate(Priority_Difference = P100_Priority - FUSE_Priority)
+
+# Convert back to sf
+difference_sf <- st_as_sf(merged_priorities, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create the difference plot for continental waters
+p100_vs_fuse_continental_plot <- ggplot() +
+  geom_sf(data = difference_sf, aes(color = Priority_Difference), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "blue",      # FUSE higher priority
+    mid = "white",     # Similar priority
+    high = "red",      # P100 higher priority
+    midpoint = 0,
+    name = "Priority Difference\n(P100 - FUSE)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between P100 and FUSE",
+       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL,
+       caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): FUSE assigns higher priority") +
+  my_theme
+
+# Display the plot
+p100_vs_fuse_continental_plot
+
+# Save the difference plot
+ggsave(
+  filename = here::here("outputs", "P100_vs_FUSE_continental_difference.png"),
+  plot = p100_vs_fuse_continental_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+### Differences between IUCN P100 10 and EDGE2 continental waters only
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+
+# Read the data
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+continental_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform both datasets to sf objects
+P100_sf <- st_as_sf(IUCN_P100_data, coords = c("Longitude", "Latitude"), crs = 4326)
+continental_sf_EDGE2_01 <- st_as_sf(continental_data_EDGE2_01, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Extract coordinates before joining
+p100_coords <- st_coordinates(P100_sf)
+P100_sf$Longitude <- p100_coords[,1]
+P100_sf$Latitude <- p100_coords[,2]
+
+edge2_coords <- st_coordinates(continental_sf_EDGE2_01)
+continental_sf_EDGE2_01$Longitude <- edge2_coords[,1]
+continental_sf_EDGE2_01$Latitude <- edge2_coords[,2]
+
+# Create dataframes without geometry for joining
+p100_df <- P100_sf %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(P100_Priority = Priority)
+
+edge2_df <- continental_sf_EDGE2_01 %>%
+  st_drop_geometry() %>%
+  select(Longitude, Latitude, Priority) %>%
+  rename(EDGE2_Priority = Priority)
+
+# Join the dataframes by coordinates - using inner_join to get only points in both datasets
+merged_priorities <- inner_join(
+  edge2_df, 
+  p100_df, 
+  by = c("Longitude", "Latitude")
+)
+
+# Calculate the difference (P100 - EDGE2)
+merged_priorities <- merged_priorities %>%
+  mutate(Priority_Difference = P100_Priority - EDGE2_Priority)
+
+# Convert back to sf
+difference_sf <- st_as_sf(merged_priorities, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create the difference plot for continental waters
+p100_vs_edge2_continental_plot <- ggplot() +
+  geom_sf(data = difference_sf, aes(color = Priority_Difference), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "blue",      # EDGE2 higher priority
+    mid = "white",     # Similar priority
+    high = "red",      # P100 higher priority
+    midpoint = 0,
+    name = "Priority Difference\n(P100 - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities between P100 and EDGE2",
+       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL,
+       caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
+  my_theme
+
+# Display the plot
+p100_vs_edge2_continental_plot
+
+# Save the difference plot
+ggsave(
+  filename = here::here("outputs", "P100_vs_EDGE2_continental_difference.png"),
+  plot = p100_vs_edge2_continental_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+### Bivariate map : P100 vs FUSE 
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+library(biscale)  # for bivariate color palette
+library(cowplot)  # for plot_grid
+library(grid)     # for textGrob
+library(gridExtra) # for grid.arrange
+library(smoothr)  # for densify
+
+# Read the data
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+fuse_continental <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Function to process and combine data
+process_data <- function(p100_data, fuse_data) {
+  # Extract only continental waters points from P100 data
+  # First convert FUSE to points for matching
+  fuse_points <- fuse_data %>%
+    select(Longitude, Latitude)
+  
+  # Filter P100 to include only points that match with FUSE continental points
+  p100_continental <- p100_data %>%
+    semi_join(fuse_points, by = c("Longitude", "Latitude"))
+  
+  # Combine the datasets
+  combined_data <- p100_continental %>%
+    rename(P100_Priority = Priority) %>%
+    left_join(fuse_data %>% rename(FUSE_Priority = Priority),
+              by = c("Longitude", "Latitude"))
+  
+  # Normalize priorities to 0-1 range
+  combined_data <- combined_data %>%
+    mutate(
+      P100_Priority_Norm = (P100_Priority - min(P100_Priority, na.rm = TRUE)) / 
+                           (max(P100_Priority, na.rm = TRUE) - min(P100_Priority, na.rm = TRUE)),
+      FUSE_Priority_Norm = (FUSE_Priority - min(FUSE_Priority, na.rm = TRUE)) / 
+                           (max(FUSE_Priority, na.rm = TRUE) - min(FUSE_Priority, na.rm = TRUE))
+    )
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process data for P100 vs FUSE in continental waters
+continental_sf_p100_fuse <- process_data(IUCN_P100_data, fuse_continental)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create color palette
+map_pal_raw <- bi_pal(pal = 'PurpleOr', dim = 4, preview = FALSE)
+map_pal_mtx <- matrix(map_pal_raw, nrow = 4, ncol = 4)
+map_pal_mtx[3, ] <- colorspace::lighten(map_pal_mtx[3, ], .1)
+map_pal_mtx[2, ] <- colorspace::lighten(map_pal_mtx[2, ], .2)
+map_pal_mtx[1, ] <- colorspace::lighten(map_pal_mtx[1, ], .3)
+map_pal_mtx[ , 3] <- colorspace::lighten(map_pal_mtx[ , 3], .1)
+map_pal_mtx[ , 2] <- colorspace::lighten(map_pal_mtx[ , 2], .2)
+map_pal_mtx[ , 1] <- colorspace::lighten(map_pal_mtx[ , 1], .3)
+map_pal_mtx[1, 1] <- '#ffffee'
+map_pal <- as.vector(map_pal_mtx) %>% setNames(names(map_pal_raw))
+
+# Color mapping function
+get_color <- function(p100, fuse) {
+  p100_class <- cut(p100, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  fuse_class <- cut(fuse, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  return(map_pal[(as.numeric(fuse_class)-1)*4 + as.numeric(p100_class)])
+}
+
+# Apply colors to the dataset
+continental_sf_p100_fuse$new_color <- mapply(get_color, 
+                                            continental_sf_p100_fuse$P100_Priority_Norm, 
+                                            continental_sf_p100_fuse$FUSE_Priority_Norm)
+
+# Create plot function (no title)
+create_bivariate_plot <- function(data_sf) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    theme(panel.grid = element_blank())
+}
+
+# Create a larger, less squashed legend
+legend_plot_p100_fuse <- bi_legend(pal = map_pal, dim = 4,
+                                 xlab = 'P100',
+                                 ylab = 'FUSE',
+                                 size = 6) + # Increased legend size
+  theme(
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_blank(),
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10) # Add some margin
+  )
+
+# Create the bivariate plot
+continental_bivariate_p100_fuse <- create_bivariate_plot(continental_sf_p100_fuse)
+
+# Create the continental figure with legend - with adjusted layout to make the legend less squashed
+continental_layout_p100_fuse <- rbind(
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(2, 2, 2),
+  c(2, 2, 2)  # Add another row for the legend to make it taller
+)
+
+continental_with_legend_p100_fuse <- grid.arrange(
+  continental_bivariate_p100_fuse,
+  legend_plot_p100_fuse,
+  layout_matrix = continental_layout_p100_fuse,
+  heights = c(0.22, 0.22, 0.22, 0.17, 0.17)  # Increased height for the legend
+)
+
+# Add title to the figure
+titled_plot <- grid.arrange(
+  continental_with_legend_p100_fuse,
+  top = textGrob("Bivariate Map of P100 and FUSE Priorities - Continental Waters", 
+                gp = gpar(fontsize = 16, font = 2))
+)
+
+# Save the plot
+ggsave(here::here("outputs", "continental_bivariate_map_P100_vs_FUSE.png"), 
+       titled_plot,
+       width = 10, 
+       height = 10,
+       dpi = 300,
+       bg = "white")
+```
+
+### Bivariate map : P100 vs EDGE2 
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+library(biscale)  # for bivariate color palette
+library(cowplot)  # for plot_grid
+library(grid)     # for textGrob
+library(gridExtra) # for grid.arrange
+library(smoothr)  # for densify
+
+# Read the data
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+edge2_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Function to process and combine data
+process_data <- function(p100_data, edge2_data) {
+  # Extract only continental waters points from P100 data
+  # First convert EDGE2 to points for matching
+  edge2_points <- edge2_data %>%
+    select(Longitude, Latitude)
+  
+  # Filter P100 to include only points that match with EDGE2 continental points
+  p100_continental <- p100_data %>%
+    semi_join(edge2_points, by = c("Longitude", "Latitude"))
+  
+  # Combine the datasets
+  combined_data <- p100_continental %>%
+    rename(P100_Priority = Priority) %>%
+    left_join(edge2_data %>% rename(EDGE2_Priority = Priority),
+              by = c("Longitude", "Latitude"))
+  
+  # Normalize priorities to 0-1 range
+  combined_data <- combined_data %>%
+    mutate(
+      P100_Priority_Norm = (P100_Priority - min(P100_Priority, na.rm = TRUE)) / 
+                           (max(P100_Priority, na.rm = TRUE) - min(P100_Priority, na.rm = TRUE)),
+      EDGE2_Priority_Norm = (EDGE2_Priority - min(EDGE2_Priority, na.rm = TRUE)) / 
+                           (max(EDGE2_Priority, na.rm = TRUE) - min(EDGE2_Priority, na.rm = TRUE))
+    )
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process data for P100 vs EDGE2 in continental waters
+continental_sf_p100_edge2 <- process_data(IUCN_P100_data, edge2_continental)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create color palette
+map_pal_raw <- bi_pal(pal = 'PurpleOr', dim = 4, preview = FALSE)
+map_pal_mtx <- matrix(map_pal_raw, nrow = 4, ncol = 4)
+map_pal_mtx[3, ] <- colorspace::lighten(map_pal_mtx[3, ], .1)
+map_pal_mtx[2, ] <- colorspace::lighten(map_pal_mtx[2, ], .2)
+map_pal_mtx[1, ] <- colorspace::lighten(map_pal_mtx[1, ], .3)
+map_pal_mtx[ , 3] <- colorspace::lighten(map_pal_mtx[ , 3], .1)
+map_pal_mtx[ , 2] <- colorspace::lighten(map_pal_mtx[ , 2], .2)
+map_pal_mtx[ , 1] <- colorspace::lighten(map_pal_mtx[ , 1], .3)
+map_pal_mtx[1, 1] <- '#ffffee'
+map_pal <- as.vector(map_pal_mtx) %>% setNames(names(map_pal_raw))
+
+# Color mapping function
+get_color <- function(p100, edge2) {
+  p100_class <- cut(p100, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  edge2_class <- cut(edge2, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  return(map_pal[(as.numeric(edge2_class)-1)*4 + as.numeric(p100_class)])
+}
+
+# Apply colors to the dataset
+continental_sf_p100_edge2$new_color <- mapply(get_color, 
+                                            continental_sf_p100_edge2$P100_Priority_Norm, 
+                                            continental_sf_p100_edge2$EDGE2_Priority_Norm)
+
+# Create plot function (no title)
+create_bivariate_plot <- function(data_sf) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    theme(panel.grid = element_blank())
+}
+
+# Create a larger, well-proportioned legend
+legend_plot_p100_edge2 <- bi_legend(pal = map_pal, dim = 4,
+                                 xlab = 'P100',
+                                 ylab = 'EDGE2',
+                                 size = 6) + # Increased legend size
+  theme(
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_blank(),
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10) # Add some margin
+  )
+
+# Create the bivariate plot
+continental_bivariate_p100_edge2 <- create_bivariate_plot(continental_sf_p100_edge2)
+
+# Create the continental figure with legend - with better layout for the legend
+continental_layout_p100_edge2 <- rbind(
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(2, 2, 2),
+  c(2, 2, 2)  # Add another row for the legend to make it taller
+)
+
+continental_with_legend_p100_edge2 <- grid.arrange(
+  continental_bivariate_p100_edge2,
+  legend_plot_p100_edge2,
+  layout_matrix = continental_layout_p100_edge2,
+  heights = c(0.22, 0.22, 0.22, 0.17, 0.17)  # Increased height for the legend
+)
+
+# Add title to the figure
+titled_plot <- grid.arrange(
+  continental_with_legend_p100_edge2,
+  top = textGrob("Bivariate Map of P100 and EDGE2 Priorities - Continental Waters", 
+                gp = gpar(fontsize = 16, font = 2))
+)
+
+# Save the plot
+ggsave(here::here("outputs", "continental_bivariate_map_P100_vs_EDGE2.png"), 
+       titled_plot,
+       width = 10, 
+       height = 10,
+       dpi = 300,
+       bg = "white")
+```
+
+### Bivariate map : FUSE vs EDGE2 
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(here)
+library(biscale)  # for bivariate color palette
+library(cowplot)  # for plot_grid
+library(grid)     # for textGrob
+library(gridExtra) # for grid.arrange
+library(smoothr)  # for densify
+
+# Read the data
+fuse_continental <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+edge2_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Function to process and combine data
+process_data <- function(fuse_data, edge2_data) {
+  # Combine the datasets
+  combined_data <- fuse_data %>%
+    rename(FUSE_Priority = Priority) %>%
+    left_join(edge2_data %>% rename(EDGE2_Priority = Priority),
+              by = c("Longitude", "Latitude"))
+  
+  # Normalize priorities to 0-1 range
+  combined_data <- combined_data %>%
+    mutate(
+      FUSE_Priority_Norm = (FUSE_Priority - min(FUSE_Priority, na.rm = TRUE)) / 
+                           (max(FUSE_Priority, na.rm = TRUE) - min(FUSE_Priority, na.rm = TRUE)),
+      EDGE2_Priority_Norm = (EDGE2_Priority - min(EDGE2_Priority, na.rm = TRUE)) / 
+                           (max(EDGE2_Priority, na.rm = TRUE) - min(EDGE2_Priority, na.rm = TRUE))
+    )
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process data for FUSE vs EDGE2 in continental waters
+continental_sf_fuse_edge2 <- process_data(fuse_continental, edge2_continental)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create color palette
+map_pal_raw <- bi_pal(pal = 'PurpleOr', dim = 4, preview = FALSE)
+map_pal_mtx <- matrix(map_pal_raw, nrow = 4, ncol = 4)
+map_pal_mtx[3, ] <- colorspace::lighten(map_pal_mtx[3, ], .1)
+map_pal_mtx[2, ] <- colorspace::lighten(map_pal_mtx[2, ], .2)
+map_pal_mtx[1, ] <- colorspace::lighten(map_pal_mtx[1, ], .3)
+map_pal_mtx[ , 3] <- colorspace::lighten(map_pal_mtx[ , 3], .1)
+map_pal_mtx[ , 2] <- colorspace::lighten(map_pal_mtx[ , 2], .2)
+map_pal_mtx[ , 1] <- colorspace::lighten(map_pal_mtx[ , 1], .3)
+map_pal_mtx[1, 1] <- '#ffffee'
+map_pal <- as.vector(map_pal_mtx) %>% setNames(names(map_pal_raw))
+
+# Color mapping function
+get_color <- function(fuse, edge2) {
+  fuse_class <- cut(fuse, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  edge2_class <- cut(edge2, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  return(map_pal[(as.numeric(edge2_class)-1)*4 + as.numeric(fuse_class)])
+}
+
+# Apply colors to the dataset
+continental_sf_fuse_edge2$new_color <- mapply(get_color, 
+                                            continental_sf_fuse_edge2$FUSE_Priority_Norm, 
+                                            continental_sf_fuse_edge2$EDGE2_Priority_Norm)
+
+# Create plot function (no title)
+create_bivariate_plot <- function(data_sf) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = new_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_border, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    theme(panel.grid = element_blank())
+}
+
+# Create a larger, well-proportioned legend
+legend_plot_fuse_edge2 <- bi_legend(pal = map_pal, dim = 4,
+                                 xlab = 'FUSE',
+                                 ylab = 'EDGE2',
+                                 size = 6) + # Increased legend size
+  theme(
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_blank(),
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10) # Add some margin
+  )
+
+# Create the bivariate plot
+continental_bivariate_fuse_edge2 <- create_bivariate_plot(continental_sf_fuse_edge2)
+
+# Create the continental figure with legend - with better layout for the legend
+continental_layout_fuse_edge2 <- rbind(
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(1, 1, 1),
+  c(2, 2, 2),
+  c(2, 2, 2)  # Add another row for the legend to make it taller
+)
+
+continental_with_legend_fuse_edge2 <- grid.arrange(
+  continental_bivariate_fuse_edge2,
+  legend_plot_fuse_edge2,
+  layout_matrix = continental_layout_fuse_edge2,
+  heights = c(0.22, 0.22, 0.22, 0.17, 0.17)  # Increased height for the legend
+)
+
+# Add title to the figure
+titled_plot <- grid.arrange(
+  continental_with_legend_fuse_edge2,
+  top = textGrob("Bivariate Map of FUSE and EDGE2 Priorities - Continental Waters", 
+                gp = gpar(fontsize = 16, font = 2))
+)
+
+# Save the plot
+ggsave(here::here("outputs", "continental_bivariate_map_FUSE_vs_EDGE2.png"), 
+       titled_plot,
+       width = 10, 
+       height = 10,
+       dpi = 300,
+       bg = "white")
 ```
