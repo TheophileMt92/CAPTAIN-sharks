@@ -601,6 +601,45 @@ print(iucn_plot)
 ggsave(here::here("Outputs", "under_represented_species_iucn_comparison.png"), 
        iucn_plot, width = 10, height = 6, dpi = 300)
 
+# For no-take MPAs only 
+library(ggplot2)
+
+# Filter out the "Under-represented (All MPAs)" category from the dataset
+filtered_data <- combined_iucn_summary %>%
+  dplyr::filter(title != "Under-represented (All MPAs)")
+
+# Create a bar plot comparing IUCN distributions (excluding "Under-represented (All MPAs)")
+iucn_plot_NT <- ggplot(filtered_data, aes(x = IUCN_status, y = percentage, fill = title)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_fill_manual(values = c("All Species" = "grey70", 
+                               "Under-represented (No-take MPAs)" = "darkred")) +
+  labs(
+    title = "IUCN Status Distribution Comparison",
+    subtitle = "All Species vs. Under-represented (No-take MPAs)",
+    x = "IUCN Red List Status",
+    y = "Percentage of Species",
+    fill = ""
+  ) +
+  theme_classic() +  # Using theme_classic() for a white background with minimal elements
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white", color = NA),  # Ensure white background
+    plot.background = element_rect(fill = "white", color = NA),   # White background for the entire plot
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+# Print the plot
+print(iucn_plot_NT)
+
+# Save the plot
+ggsave(here::here("Outputs", "under_represented_species_iucn_comparison_NT_only.png"), 
+       iucn_plot_NT, width = 10, height = 6, dpi = 300)
+
 # Statistical test: Chi-square test to determine if there are significant differences
 # in IUCN status distribution between all species and under-represented species
 
