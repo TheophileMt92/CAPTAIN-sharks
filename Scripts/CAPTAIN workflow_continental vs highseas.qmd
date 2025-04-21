@@ -2648,6 +2648,16 @@ grid_plot <- grid.arrange(
 saveRDS(combined_protection_FUSE_01, file = here::here("Data", "combined_protection_FUSE_01.rds"))
 ```
 
+### Verify Mean Protect Fraction 
+
+```{r}
+
+#Make sure prot_frac is the correct one  
+library(dplyr)
+prot_frac <- prot_frac %>% arrange(desc(Mean_Protect_Fraction))
+
+```
+
 ## EDGE2 : species level priorities 
 
 ### Budget: 0.3
@@ -3241,6 +3251,15 @@ grid_plot <- grid.arrange(
 saveRDS(combined_protection_EDGE2_01, file = here::here("Data", "combined_protection_EDGE2_01.rds"))
 ```
 
+### Verify Mean Protect Fraction 
+
+```{r}
+
+#Make sure prot_frac is the correct one  
+library(dplyr)
+prot_frac <- prot_frac %>% arrange(desc(Mean_Protect_Fraction))
+
+```
 
 ## IUCN conservation priority maps 
 
