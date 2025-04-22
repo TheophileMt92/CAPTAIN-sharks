@@ -3998,3 +3998,277 @@ kable_table
 ```
 
 **Key message:** There is significant negative relationship between EDGE2 and FUSE with the % of range protected. Species with high FUSE or high EDGE2 tend to be less protected than those with low EDGE2 or FUSE.
+
+# Relate to Biogeographical Realms, Ecoregions and Nations
+
+
+```{r}
+#Realms 
+# Load required libraries
+library(sf)
+library(terra)
+library(dplyr)
+library(ggplot2)
+library(here)
+library(forcats)  # For factor manipulation
+
+# Load continental_projected_NT
+continental_projected_NT <- readRDS(here("Data", "continental_projected_NT.rds"))
+
+# Load MEOW ecosystems shapefile
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Inspect the MEOW data to understand its structure
+print(names(meow_ecos))
+print(head(meow_ecos))
+
+# Step 1: Transform MEOW to match the CRS of the point data
+meow_projected <- st_transform(meow_ecos, st_crs(continental_projected_NT))
+
+# Step 2: Convert to terra objects
+points_vect <- terra::vect(continental_projected_NT)
+meow_vect <- terra::vect(meow_projected)
+
+# Step 3: Use terra's intersect function for MEOW ecosystems
+meow_intersect <- terra::intersect(points_vect, meow_vect)
+
+# Step 4: Extract the results to a data frame
+meow_df <- as.data.frame(meow_intersect)
+
+# Calculate median SES per REALM
+realm_summary <- meow_df %>%
+  group_by(REALM) %>%
+  summarise(
+    median_SES = median(mean_SES, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(median_SES))
+
+# Print the realms in order
+print(realm_summary)
+
+# Create a new factor with proper ordering
+ordered_realms <- realm_summary$REALM
+
+# Update the dataframe with the properly ordered factor
+meow_df$REALM_ordered <- factor(
+  meow_df$REALM, 
+  levels = ordered_realms,
+  ordered = TRUE
+)
+
+# Create the boxplot with properly ordered y-axis and no whiskers
+ggplot(meow_df, aes(x = mean_SES, y = REALM_ordered)) +
+  geom_boxplot(outlier.shape = NA, coef = 0) +  # No whiskers
+  theme_bw() +
+  labs(
+    title = "Distribution of Mean SES Values by Biogeographical Realm",
+    subtitle = "Ordered by Median Value (Lowest to Highest)",
+    y = "Biogeographical Realm",
+    x = "Mean SES"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 10),
+    panel.grid.major.y = element_blank()
+  )
+
+# Save the results
+ggsave(here("Outputs", "meow_realm_ses_boxplot_horizontal.png"), width = 10, height = 6)
+saveRDS(realm_summary, here("Data", "meow_realm_ses_summary.rds"))
+saveRDS(meow_df, here("Data", "meow_ses_data.rds"))
+
+#Ecoregions
+# Load MEOW ecosystems shapefile
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Transform MEOW to match the CRS of the point data
+meow_projected <- st_transform(meow_ecos, st_crs(continental_projected_NT))
+
+# Convert to terra objects
+meow_vect <- terra::vect(meow_projected)
+
+# Use terra's intersect function for MEOW ecosystems
+meow_intersect <- terra::intersect(points_vect, meow_vect)
+
+# Extract the results to a data frame
+meow_df <- as.data.frame(meow_intersect)
+
+# Calculate median SES per ECOREGION
+ecoregion_summary <- meow_df %>%
+  group_by(ECOREGION) %>%
+  summarise(
+    median_SES = median(mean_SES, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  # Filter out regions with very few points if needed
+  # filter(n >= 5) %>%
+  arrange(desc(median_SES))
+
+# Print top and bottom few to check
+print(head(ecoregion_summary, 10))
+print(tail(ecoregion_summary, 10))
+
+# Create a new factor with proper ordering
+ordered_ecoregions <- ecoregion_summary$ECOREGION
+
+# Update the dataframe with the properly ordered factor
+meow_df$ECOREGION_ordered <- factor(
+  meow_df$ECOREGION, 
+  levels = ordered_ecoregions,
+  ordered = TRUE
+)
+
+# Create the full boxplot with properly ordered y-axis and no whiskers
+ggplot(meow_df, aes(x = mean_SES, y = ECOREGION_ordered)) +
+  geom_boxplot(outlier.shape = NA, coef = 0) +  # No whiskers
+  theme_bw() +
+  labs(
+    title = "Distribution of Mean SES Values by MEOW Ecoregion",
+    subtitle = "Ordered by Median Value (Highest to Lowest)",
+    y = "MEOW Ecoregion",
+    x = "Mean SES"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 7),  # Smaller text for more ecoregions
+    panel.grid.major.y = element_blank()
+  )
+
+# Create the top 20 version
+top_20_ecoregions <- head(ordered_ecoregions, 20)
+
+# Filter data for top 20
+ecoregion_top20 <- meow_df %>% 
+  filter(ECOREGION %in% top_20_ecoregions)
+
+# Recreate the factor specifically for the top 20 (for proper ordering)
+ecoregion_top20$ECOREGION_ordered <- factor(
+  ecoregion_top20$ECOREGION,
+  levels = top_20_ecoregions,
+  ordered = TRUE
+)
+
+# Create the top 20 plot with properly ordered y-axis and no whiskers
+ggplot(ecoregion_top20, aes(x = mean_SES, y = ECOREGION_ordered)) +
+  geom_boxplot(outlier.shape = NA, coef = 0) +  # No whiskers
+  theme_bw() +
+  labs(
+    title = "Distribution of Mean SES Values by MEOW Ecoregion (Top 20)",
+    subtitle = "Ordered by Median Value (Highest to Lowest)",
+    y = "MEOW Ecoregion",
+    x = "Mean SES"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 9),
+    panel.grid.major.y = element_blank()
+  )
+
+# Save the results
+ggsave(here("Plots", "meow_ecoregion_ses_boxplot_top20_horizontal.png"), width = 10, height = 8)
+saveRDS(meow_df, here("Data", "meow_ecoregion_ses_data.rds"))
+
+# EEZs 
+
+# Load required libraries
+library(sf)
+library(terra)
+library(dplyr)
+library(ggplot2)
+library(here)
+library(forcats)  # For factor manipulation
+
+# Load continental_projected_NT
+continental_projected_NT <- readRDS(here("Data", "continental_projected_NT.rds"))
+
+# Load EEZ shapefile
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE)
+
+# Step 1: Transform EEZ to match the CRS of the point data
+eez_projected <- st_transform(eez, st_crs(continental_projected_NT))
+
+# Step 2: Convert to terra objects
+points_vect <- terra::vect(continental_projected_NT)
+eez_vect <- terra::vect(eez_projected)
+
+# Step 3: Use terra's intersect function
+intersect_result <- terra::intersect(points_vect, eez_vect)
+
+# Step 4: Extract the results to a data frame
+intersect_df <- as.data.frame(intersect_result)
+
+# Step 5: Calculate median SES per sovereign territory
+eez_summary <- intersect_df %>%
+  group_by(SOVEREIGN1) %>%
+  summarise(
+    median_SES = median(mean_SES, na.rm = TRUE),
+    n = n(),  # Count number of points
+    .groups = "drop"
+  ) %>%
+  # Filter out territories with very few points if needed
+  # filter(n >= 5) %>%
+  arrange(desc(median_SES))  # Order by descending median SES
+
+# Print top and bottom few to check
+print(head(eez_summary, 10))
+print(tail(eez_summary, 10))
+
+# Step 6: Create a new factor with proper ordering
+# Make sure the levels are in the correct order (highest median SES first)
+ordered_sovereigns <- eez_summary$SOVEREIGN1
+
+# Update the dataframe with the properly ordered factor
+intersect_df$SOVEREIGN1_ordered <- factor(
+  intersect_df$SOVEREIGN1, 
+  levels = ordered_sovereigns,  # Use the ordered list of sovereigns
+  ordered = TRUE  # Make it an ordered factor
+)
+
+# Step 7: Create the full boxplot with properly ordered y-axis
+ggplot(intersect_df, aes(x = mean_SES, y = SOVEREIGN1_ordered)) +
+  geom_boxplot(outlier.shape = NA, coef = 0) +  # coef = 0 removes whiskers
+  theme_bw() +
+  labs(
+    title = "Distribution of Mean SES Values by Sovereign Territory",
+    subtitle = "Ordered by Median Value (Highest to Lowest)",
+    y = "Sovereign Territory",
+    x = "Mean SES"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 8),
+    panel.grid.major.y = element_blank()
+  )
+
+# Step 8: Create the top 20 version
+top_20_sovereigns <- head(ordered_sovereigns, 20)
+
+# Filter data for top 20
+top20_data <- intersect_df %>% 
+  filter(SOVEREIGN1 %in% top_20_sovereigns)
+
+# Recreate the factor specifically for the top 20 (for proper ordering)
+top20_data$SOVEREIGN1_ordered <- factor(
+  top20_data$SOVEREIGN1,
+  levels = top_20_sovereigns,
+  ordered = TRUE
+)
+
+# Create the top 20 plot with properly ordered y-axis
+ggplot(top20_data, aes(x = mean_SES, y = SOVEREIGN1_ordered)) +
+  geom_boxplot(outlier.shape = NA, coef = 0) +  # coef = 0 removes whiskers
+  theme_bw() +
+  labs(
+    title = "Distribution of Mean SES Values by Sovereign Territory (Top 20)",
+    subtitle = "Ordered by Median Value (Lowest to Highest)",
+    y = "Sovereign Territory",
+    x = "Mean SES"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 9),
+    panel.grid.major.y = element_blank()
+  )
+
+# Save the results
+ggsave(here("Plots", "eez_ses_boxplot_top20_horizontal.png"), width = 10, height = 8)
+saveRDS(intersect_df, here("Data", "eez_ses_data.rds"))
+```
