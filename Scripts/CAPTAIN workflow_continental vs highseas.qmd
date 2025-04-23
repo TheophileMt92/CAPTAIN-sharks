@@ -4104,3 +4104,1078 @@ ggsave(here::here("outputs", "continental_bivariate_map_FUSE_vs_EDGE2.png"),
        dpi = 300,
        bg = "white")
 ```
+
+### Relationship with fishing effort 
+
+```{r}
+
+# Calculate mean fishing hours by geographical realm
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+
+# Load your data 
+load(here::here("Data", "Raw","Predicted_Fishing_Hours_05Deg.Rdata"))
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  # Filter out any NA values if needed
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  # Create an sf object with points
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure the CRS of both datasets match
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# Perform spatial join to associate each fishing point with a realm
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+
+# Calculate statistics by realm with 5th and 95th percentiles
+realm_statistics <- fishing_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(REALM)
+
+# View results
+print(realm_statistics)
+
+# Optional: create a visualization
+library(ggplot2)
+
+# Visualization with 5th and 95th percentiles for error bars
+ggplot(realm_statistics, aes(x = reorder(REALM, mean_fishing_hours), y = mean_fishing_hours)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+  labs(title = "Mean Fishing Hours by Biogeographical Realm",
+       subtitle = "Error bars represent 5th and 95th percentiles",
+       x = "Realm",
+       y = "Mean Fishing Hours") +
+  coord_flip() +
+  theme_minimal()
+
+# Calculate mean fishing hours by ecoregion
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+
+# Load your data 
+load(here::here("Data", "Raw","Predicted_Fishing_Hours_05Deg.Rdata"))
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  # Filter out any NA values if needed
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  # Create an sf object with points
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure the CRS of both datasets match
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# Perform spatial join to associate each fishing point with an ecoregion
+# Changed from REALM to ECOREGION
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION))
+
+# Calculate statistics by ecoregion with 5th and 95th percentiles
+# Changed from REALM to ECOREGION
+ecoregion_statistics <- fishing_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(ECOREGION)
+
+# View results
+print(ecoregion_statistics)
+
+# Optional: create a visualization
+library(ggplot2)
+
+# Visualization with 5th and 95th percentiles for error bars
+# Note: There will likely be many more ecoregions than realms, so the plot may be crowded
+ggplot(ecoregion_statistics, aes(x = reorder(ECOREGION, mean_fishing_hours), y = mean_fishing_hours)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+  labs(title = "Mean Fishing Hours by Ecoregion",
+       subtitle = "Error bars represent 5th and 95th percentiles",
+       x = "Ecoregion",
+       y = "Mean Fishing Hours") +
+  coord_flip() +
+  theme_minimal() +
+  # Adding this to handle potentially large number of ecoregions
+  theme(axis.text.y = element_text(size = 7))
+
+# Show only top 20 ecoregions by mean fishing hours
+top_ecoregions <- ecoregion_statistics %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(20)
+
+ggplot(top_ecoregions, aes(x = reorder(ECOREGION, mean_fishing_hours), y = mean_fishing_hours)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+  labs(title = "Mean Fishing Hours by Ecoregion (Top 20)",
+       subtitle = "Error bars represent 5th and 95th percentiles",
+       x = "Ecoregion",
+       y = "Mean Fishing Hours") +
+  coord_flip() +
+  theme_minimal()
+
+#Calculate average priority values of P100, FUSE and EDGE2 
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+library(ggplot2)
+library(patchwork) # For combining plots
+
+# Load shapefiles
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE)
+
+# Fix EEZ geometries
+eez_fixed <- eez %>%
+  st_make_valid() %>%
+  select(SOVEREIGN1)
+
+# Load priority datasets
+IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+fuse_continental <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+edge2_continental <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Function to process each priority dataset
+process_priority_data <- function(data, dataset_name) {
+  # Convert to sf object
+  data_sf <- data %>%
+    filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority)) %>%
+    st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+  
+  # Make sure CRS match
+  st_crs(data_sf) <- st_crs(meow_ecos)
+  
+  # Join with REALM
+  data_with_realm <- st_join(data_sf, meow_ecos %>% select(REALM))
+  
+  # Join with ECOREGION
+  data_with_ecoregion <- st_join(data_sf, meow_ecos %>% select(ECOREGION, REALM))
+  
+  # Join with country (EEZ)
+  # Note: Using the fixed EEZ shapefile
+  st_crs(data_sf) <- st_crs(eez_fixed)
+  data_with_country <- st_join(data_sf, eez_fixed)
+  data_with_country <- data_with_country %>%
+    mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+  
+  # Calculate statistics by REALM
+  realm_stats <- data_with_realm %>%
+    st_drop_geometry() %>%
+    group_by(REALM) %>%
+    summarize(
+      mean_priority = mean(Priority, na.rm = TRUE),
+      median_priority = median(Priority, na.rm = TRUE),
+      q05 = quantile(Priority, 0.05, na.rm = TRUE),
+      q95 = quantile(Priority, 0.95, na.rm = TRUE),
+      n_cells = n()
+    ) %>%
+    arrange(desc(mean_priority)) %>%
+    filter(!is.na(REALM)) %>% # Remove NA realms
+    mutate(dataset = dataset_name)
+  
+  # Calculate statistics by ECOREGION
+  ecoregion_stats <- data_with_ecoregion %>%
+    st_drop_geometry() %>%
+    group_by(ECOREGION, REALM) %>%  # Include REALM for context
+    summarize(
+      mean_priority = mean(Priority, na.rm = TRUE),
+      median_priority = median(Priority, na.rm = TRUE),
+      q05 = quantile(Priority, 0.05, na.rm = TRUE),
+      q95 = quantile(Priority, 0.95, na.rm = TRUE),
+      n_cells = n()
+    ) %>%
+    arrange(desc(mean_priority)) %>%
+    filter(!is.na(ECOREGION)) %>% # Remove NA ecoregions
+    mutate(dataset = dataset_name)
+  
+  # Calculate statistics by COUNTRY
+  country_stats <- data_with_country %>%
+    st_drop_geometry() %>%
+    group_by(SOVEREIGN1) %>%
+    summarize(
+      mean_priority = mean(Priority, na.rm = TRUE),
+      median_priority = median(Priority, na.rm = TRUE),
+      q05 = quantile(Priority, 0.05, na.rm = TRUE),
+      q95 = quantile(Priority, 0.95, na.rm = TRUE),
+      n_cells = n()
+    ) %>%
+    arrange(desc(mean_priority)) %>%
+    mutate(dataset = dataset_name)
+  
+  return(list(
+    realm = realm_stats,
+    ecoregion = ecoregion_stats,
+    country = country_stats
+  ))
+}
+
+# Process all three datasets
+IUCN_results <- process_priority_data(IUCN_P100_data, "IUCN P100")
+FUSE_results <- process_priority_data(fuse_continental, "FUSE")
+EDGE2_results <- process_priority_data(edge2_continental, "EDGE2")
+
+# Combine results for comparison
+all_realm_stats <- bind_rows(
+  IUCN_results$realm,
+  FUSE_results$realm,
+  EDGE2_results$realm
+)
+
+all_ecoregion_stats <- bind_rows(
+  IUCN_results$ecoregion,
+  FUSE_results$ecoregion,
+  EDGE2_results$ecoregion
+)
+
+all_country_stats <- bind_rows(
+  IUCN_results$country,
+  FUSE_results$country,
+  EDGE2_results$country
+)
+
+# Save the combined results
+saveRDS(all_realm_stats, here("Outputs", "all_realm_priority_stats.rds"))
+saveRDS(all_ecoregion_stats, here("Outputs", "all_ecoregion_priority_stats.rds"))
+saveRDS(all_country_stats, here("Outputs", "all_country_priority_stats.rds"))
+
+# Create visualizations for each dataset
+# 1. Plot top 10 realms by priority for each dataset
+plot_top_realms <- function(realm_data, dataset_name) {
+  top_realms <- realm_data %>%
+    filter(dataset == dataset_name) %>%
+    top_n(10, mean_priority)
+  
+  ggplot(top_realms, aes(x = reorder(REALM, mean_priority), y = mean_priority)) +
+    geom_bar(stat = "identity", fill = "darkgreen") +
+    geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+    labs(title = paste("Top 10 Realms by Priority -", dataset_name),
+         subtitle = "Error bars: 5th-95th percentiles",
+         x = "Realm",
+         y = "Mean Priority") +
+    coord_flip() +
+    theme_minimal()
+}
+
+# 2. Plot top 20 ecoregions by priority for each dataset
+plot_top_ecoregions <- function(ecoregion_data, dataset_name) {
+  top_ecoregions <- ecoregion_data %>%
+    filter(dataset == dataset_name) %>%
+    top_n(20, mean_priority)
+  
+  # Create a combined label with ecoregion and realm
+  top_ecoregions <- top_ecoregions %>%
+    mutate(ecoregion_label = paste0(ECOREGION, " (", REALM, ")"))
+  
+  ggplot(top_ecoregions, aes(x = reorder(ecoregion_label, mean_priority), y = mean_priority)) +
+    geom_bar(stat = "identity", fill = "darkred") +
+    geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+    labs(title = paste("Top 20 Ecoregions by Priority -", dataset_name),
+         subtitle = "Error bars: 5th-95th percentiles",
+         x = "Ecoregion (Realm)",
+         y = "Mean Priority") +
+    coord_flip() +
+    theme_minimal() +
+    theme(axis.text.y = element_text(size = 8))
+}
+
+# 3. Plot top 15 countries by priority for each dataset
+plot_top_countries <- function(country_data, dataset_name) {
+  top_countries <- country_data %>%
+    filter(dataset == dataset_name) %>%
+    top_n(15, mean_priority)
+  
+  ggplot(top_countries, aes(x = reorder(SOVEREIGN1, mean_priority), y = mean_priority)) +
+    geom_bar(stat = "identity", fill = "darkblue") +
+    geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+    labs(title = paste("Top 15 Countries by Priority -", dataset_name),
+         subtitle = "Error bars: 5th-95th percentiles",
+         x = "Country",
+         y = "Mean Priority") +
+    coord_flip() +
+    theme_minimal()
+}
+
+# Create plots for each dataset
+iucn_realm_plot <- plot_top_realms(all_realm_stats, "IUCN P100")
+fuse_realm_plot <- plot_top_realms(all_realm_stats, "FUSE") 
+edge2_realm_plot <- plot_top_realms(all_realm_stats, "EDGE2")
+
+iucn_ecoregion_plot <- plot_top_ecoregions(all_ecoregion_stats, "IUCN P100")
+fuse_ecoregion_plot <- plot_top_ecoregions(all_ecoregion_stats, "FUSE")
+edge2_ecoregion_plot <- plot_top_ecoregions(all_ecoregion_stats, "EDGE2")
+
+iucn_country_plot <- plot_top_countries(all_country_stats, "IUCN P100")
+fuse_country_plot <- plot_top_countries(all_country_stats, "FUSE")
+edge2_country_plot <- plot_top_countries(all_country_stats, "EDGE2")
+
+```
+
+### Relationship between P100 and Fishing hours 
+
+```{r}
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+library(ggplot2)
+library(ggrepel) # For better label placement
+library(ggsci)   # For nice color palettes
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
+# Load shapefiles
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE) %>%
+  st_make_valid() %>%
+  select(SOVEREIGN1)
+
+# Load IUCN P100 priority data
+IUCN_P100_data <- readRDS(here::here("Data", "IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
+
+#---------------------- FISHING DATA PROCESSING ----------------------#
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure CRS match
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# 1. Process fishing data for REALMS
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+
+realm_fishing_stats <- fishing_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 2. Process fishing data for ECOREGIONS
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_fishing_stats <- fishing_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 3. Process fishing data for COUNTRIES
+st_crs(fishing_sf) <- st_crs(eez)
+fishing_with_country <- st_join(fishing_sf, eez)
+fishing_with_country <- fishing_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_fishing_stats <- fishing_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  arrange(desc(mean_fishing_hours))
+
+#---------------------- PRIORITY DATA PROCESSING ----------------------#
+
+# Convert IUCN P100 data to sf object
+iucn_sf <- IUCN_P100_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+# 1. Process priority data for REALMS
+st_crs(iucn_sf) <- st_crs(meow_ecos)
+iucn_with_realm <- st_join(iucn_sf, meow_ecos %>% select(REALM))
+
+realm_priority_stats <- iucn_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_priority))
+
+# 2. Process priority data for ECOREGIONS
+iucn_with_ecoregion <- st_join(iucn_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_priority_stats <- iucn_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+# 3. Process priority data for COUNTRIES
+st_crs(iucn_sf) <- st_crs(eez)
+iucn_with_country <- st_join(iucn_sf, eez)
+iucn_with_country <- iucn_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_priority_stats <- iucn_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  arrange(desc(mean_priority))
+
+#---------------------- MERGE DATASETS FOR SCATTERPLOTS ----------------------#
+
+# 1. Merge REALM data
+realm_combined <- inner_join(realm_fishing_stats, realm_priority_stats, by = "REALM") %>%
+  # Calculate cell count ratio to identify areas with sparse data
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 2. Merge ECOREGION data
+ecoregion_combined <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_priority_stats, 
+  by = c("ECOREGION", "REALM")
+) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 3. Merge COUNTRY data
+country_combined <- inner_join(country_fishing_stats, country_priority_stats, by = "SOVEREIGN1") %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+#---------------------- CREATE SCATTERPLOTS ----------------------#
+
+# 1. REALM Scatterplot
+realm_plot <- ggplot(realm_combined, 
+                     aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.7) +
+  geom_text_repel(aes(label = REALM), size = 3, max.overlaps = 15) +
+  #geom_smooth(method = "lm", color = "red", se = TRUE, linetype = "dashed", alpha = 0.2) +
+  scale_size_continuous(name = "Number of Cells", range = c(3, 10)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Marine Realm (IUCN P100)",
+       x = "Mean Fishing Hours",
+       y = "Mean Conservation Priority (P100)") +
+  theme_minimal() +
+  # Optional log scale for fishing hours if distribution is skewed
+  # scale_x_log10() +
+  theme(legend.position = "none") # Hide legend as we have text labels
+
+# 2. ECOREGION Scatterplot
+# Select top ecoregions by fishing hours and priority for better visualization
+top_ecoregions <- ecoregion_combined %>%
+  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
+           mean_priority > quantile(mean_priority, 0.75)) %>%
+  mutate(label_ecoregion = ifelse(
+    fishing_cells > quantile(fishing_cells, 0.9) | 
+      mean_priority > quantile(mean_priority, 0.9), 
+    ECOREGION, ""
+  ))
+
+ecoregion_plot <- ggplot(ecoregion_combined, 
+                         aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_text_repel(data = top_ecoregions, 
+                  aes(label = label_ecoregion), 
+                  size = 3, max.overlaps = 10) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (IUCN P100)",
+       x = "Mean Fishing Hours",
+       y = "Mean Conservation Priority (P100)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# 3. COUNTRY Scatterplot
+# Filter out High Seas from the combined dataset
+country_combined_filtered <- country_combined %>%
+  filter(SOVEREIGN1 != "High Seas")
+
+# Select countries to label more explicitly
+top_countries <- country_combined_filtered %>%
+  # Create rank columns for both metrics
+  mutate(
+    fishing_rank = rank(-mean_fishing_hours),
+    priority_rank = rank(-mean_priority)
+  ) %>%
+  # Label countries that are in top 10 of either metric or notable in both
+  mutate(label_country = ifelse(
+    fishing_rank <= 10 | priority_rank <= 10 | (fishing_rank <= 20 & priority_rank <= 20),
+    SOVEREIGN1, ""
+  ))
+
+# Create the updated plot
+country_plot <- ggplot(country_combined_filtered, 
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells), alpha = 0.6, color = "darkblue") +
+  geom_label_repel(
+    data = filter(top_countries, label_country != ""), 
+    aes(label = label_country), 
+    size = 3,
+    max.overlaps = 20,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(2, 10)) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+      subtitle = "By Country (IUCN P100)",
+      x = "Mean Fishing Hours (log scale)",
+      y = "Mean Conservation Priority (P100)") +
+  theme_minimal()
+
+# Save the plots
+ggsave(here("Outputs", "realm_fishing_priority_relationship.png"), realm_plot, width = 10, height = 8)
+ggsave(here("Outputs", "ecoregion_fishing_priority_relationship.png"), ecoregion_plot, width = 12, height = 9)
+ggsave(here("Outputs", "country_fishing_priority_relationship.png"), country_plot, width = 11, height = 8)
+```
+
+### Relationship between FUSE and Fishing hours 
+
+```{r}
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+library(ggplot2)
+library(ggrepel) # For better label placement
+library(ggsci)   # For nice color palettes
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
+# Load shapefiles
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE) %>%
+  st_make_valid() %>%
+  select(SOVEREIGN1)
+
+# Load FUSE priority data
+fuse_continental <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+#---------------------- FISHING DATA PROCESSING ----------------------#
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure CRS match
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# 1. Process fishing data for REALMS
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+
+realm_fishing_stats <- fishing_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 2. Process fishing data for ECOREGIONS
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_fishing_stats <- fishing_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 3. Process fishing data for COUNTRIES
+st_crs(fishing_sf) <- st_crs(eez)
+fishing_with_country <- st_join(fishing_sf, eez)
+fishing_with_country <- fishing_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_fishing_stats <- fishing_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  arrange(desc(mean_fishing_hours))
+
+#---------------------- PRIORITY DATA PROCESSING ----------------------#
+
+# Convert FUSE data to sf object
+fuse_sf <- fuse_continental %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+# 1. Process priority data for REALMS
+st_crs(fuse_sf) <- st_crs(meow_ecos)
+fuse_with_realm <- st_join(fuse_sf, meow_ecos %>% select(REALM))
+
+realm_priority_stats <- fuse_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_priority))
+
+# 2. Process priority data for ECOREGIONS
+fuse_with_ecoregion <- st_join(fuse_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_priority_stats <- fuse_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+# 3. Process priority data for COUNTRIES
+st_crs(fuse_sf) <- st_crs(eez)
+fuse_with_country <- st_join(fuse_sf, eez)
+fuse_with_country <- fuse_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_priority_stats <- fuse_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  arrange(desc(mean_priority))
+
+#---------------------- MERGE DATASETS FOR SCATTERPLOTS ----------------------#
+
+# 1. Merge REALM data
+realm_combined <- inner_join(realm_fishing_stats, realm_priority_stats, by = "REALM") %>%
+  # Calculate cell count ratio to identify areas with sparse data
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 2. Merge ECOREGION data
+ecoregion_combined <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_priority_stats, 
+  by = c("ECOREGION", "REALM")
+) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 3. Merge COUNTRY data
+country_combined <- inner_join(country_fishing_stats, country_priority_stats, by = "SOVEREIGN1") %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+#---------------------- CREATE SCATTERPLOTS ----------------------#
+
+# 1. REALM Scatterplot
+realm_plot <- ggplot(realm_combined, 
+                     aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.7) +
+  geom_text_repel(aes(label = REALM), size = 3, max.overlaps = 15) +
+  scale_size_continuous(name = "Number of Cells", range = c(3, 10)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Marine Realm (FUSE)",
+       x = "Mean Fishing Hours",
+       y = "Mean Conservation Priority (FUSE)") +
+  theme_minimal() +
+  theme(legend.position = "none") # Hide legend as we have text labels
+
+# 2. ECOREGION Scatterplot
+# Select top ecoregions by fishing hours and priority for better visualization
+top_ecoregions <- ecoregion_combined %>%
+  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
+           mean_priority > quantile(mean_priority, 0.75)) %>%
+  mutate(label_ecoregion = ifelse(
+    fishing_cells > quantile(fishing_cells, 0.9) | 
+      mean_priority > quantile(mean_priority, 0.9), 
+    ECOREGION, ""
+  ))
+
+ecoregion_plot <- ggplot(ecoregion_combined, 
+                         aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_text_repel(data = top_ecoregions, 
+                  aes(label = label_ecoregion), 
+                  size = 3, max.overlaps = 10) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (FUSE)",
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (FUSE)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# 3. COUNTRY Scatterplot
+# Filter out High Seas from the combined dataset
+country_combined_filtered <- country_combined %>%
+  filter(SOVEREIGN1 != "High Seas")
+
+# Select countries to label more explicitly
+top_countries <- country_combined_filtered %>%
+  # Create rank columns for both metrics
+  mutate(
+    fishing_rank = rank(-mean_fishing_hours),
+    priority_rank = rank(-mean_priority)
+  ) %>%
+  # Label countries that are in top 10 of either metric or notable in both
+  mutate(label_country = ifelse(
+    fishing_rank <= 10 | priority_rank <= 10 | (fishing_rank <= 20 & priority_rank <= 20),
+    SOVEREIGN1, ""
+  ))
+
+# Create the updated plot
+country_plot <- ggplot(country_combined_filtered, 
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells), alpha = 0.6, color = "darkblue") +
+  geom_label_repel(
+    data = filter(top_countries, label_country != ""), 
+    aes(label = label_country), 
+    size = 3,
+    max.overlaps = 20,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(2, 10)) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+      subtitle = "By Country (FUSE)",
+      x = "Mean Fishing Hours (log scale)",
+      y = "Mean Conservation Priority (FUSE)") +
+  theme_minimal()
+
+# Save the plots
+
+ggsave(here("Outputs", "fuse_realm_fishing_priority_relationship.png"), realm_plot, width = 10, height = 8)
+ggsave(here("Outputs", "fuse_ecoregion_fishing_priority_relationship.png"), ecoregion_plot, width = 12, height = 9)
+ggsave(here("Outputs", "fuse_country_fishing_priority_relationship.png"), country_plot, width = 11, height = 8)
+```
+
+### Relationship between EDGE2 and Fishing hours 
+
+```{r}
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+library(ggplot2)
+library(ggrepel) # For better label placement
+library(ggsci)   # For nice color palettes
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
+# Load shapefiles
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE) %>%
+  st_make_valid() %>%
+  select(SOVEREIGN1)
+
+# Load EDGE2 priority data
+edge2_data <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+#---------------------- FISHING DATA PROCESSING ----------------------#
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure CRS match
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# 1. Process fishing data for REALMS
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+
+realm_fishing_stats <- fishing_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 2. Process fishing data for ECOREGIONS
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_fishing_stats <- fishing_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_fishing_hours))
+
+# 3. Process fishing data for COUNTRIES
+st_crs(fishing_sf) <- st_crs(eez)
+fishing_with_country <- st_join(fishing_sf, eez)
+fishing_with_country <- fishing_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_fishing_stats <- fishing_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n()
+  ) %>%
+  arrange(desc(mean_fishing_hours))
+
+#---------------------- PRIORITY DATA PROCESSING ----------------------#
+
+# Convert EDGE2 data to sf object
+edge2_sf <- edge2_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+# 1. Process priority data for REALMS
+st_crs(edge2_sf) <- st_crs(meow_ecos)
+edge2_with_realm <- st_join(edge2_sf, meow_ecos %>% select(REALM))
+
+realm_priority_stats <- edge2_with_realm %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(REALM)) %>%
+  arrange(desc(mean_priority))
+
+# 2. Process priority data for ECOREGIONS
+edge2_with_ecoregion <- st_join(edge2_sf, meow_ecos %>% select(ECOREGION, REALM))
+
+ecoregion_priority_stats <- edge2_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+# 3. Process priority data for COUNTRIES
+st_crs(edge2_sf) <- st_crs(eez)
+edge2_with_country <- st_join(edge2_sf, eez)
+edge2_with_country <- edge2_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+country_priority_stats <- edge2_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_priority = mean(Priority, na.rm = TRUE),
+    median_priority = median(Priority, na.rm = TRUE),
+    priority_q05 = quantile(Priority, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority, 0.95, na.rm = TRUE),
+    priority_cells = n()
+  ) %>%
+  arrange(desc(mean_priority))
+
+#---------------------- MERGE DATASETS FOR SCATTERPLOTS ----------------------#
+
+# 1. Merge REALM data
+realm_combined <- inner_join(realm_fishing_stats, realm_priority_stats, by = "REALM") %>%
+  # Calculate cell count ratio to identify areas with sparse data
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 2. Merge ECOREGION data
+ecoregion_combined <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_priority_stats, 
+  by = c("ECOREGION", "REALM")
+) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+# 3. Merge COUNTRY data
+country_combined <- inner_join(country_fishing_stats, country_priority_stats, by = "SOVEREIGN1") %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+#---------------------- CREATE SCATTERPLOTS ----------------------#
+
+# 1. REALM Scatterplot
+realm_plot <- ggplot(realm_combined, 
+                     aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.7) +
+  geom_text_repel(aes(label = REALM), size = 3, max.overlaps = 15) +
+  scale_size_continuous(name = "Number of Cells", range = c(3, 10)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Marine Realm (EDGE2)",
+       x = "Mean Fishing Hours",
+       y = "Mean Conservation Priority (EDGE2)") +
+  theme_minimal() +
+  theme(legend.position = "none") # Hide legend as we have text labels
+
+# 2. ECOREGION Scatterplot
+# Select top ecoregions by fishing hours and priority for better visualization
+top_ecoregions <- ecoregion_combined %>%
+  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
+           mean_priority > quantile(mean_priority, 0.75)) %>%
+  mutate(label_ecoregion = ifelse(
+    fishing_cells > quantile(fishing_cells, 0.9) | 
+      mean_priority > quantile(mean_priority, 0.9), 
+    ECOREGION, ""
+  ))
+
+ecoregion_plot <- ggplot(ecoregion_combined, 
+                         aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_text_repel(data = top_ecoregions, 
+                  aes(label = label_ecoregion), 
+                  size = 3, max.overlaps = 10) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_npg() +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (EDGE2)",
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (EDGE2)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# 3. COUNTRY Scatterplot
+# Filter out High Seas from the combined dataset
+country_combined_filtered <- country_combined %>%
+  filter(SOVEREIGN1 != "High Seas")
+
+# Select countries to label more explicitly
+top_countries <- country_combined_filtered %>%
+  # Create rank columns for both metrics
+  mutate(
+    fishing_rank = rank(-mean_fishing_hours),
+    priority_rank = rank(-mean_priority)
+  ) %>%
+  # Label countries that are in top 10 of either metric or notable in both
+  mutate(label_country = ifelse(
+    fishing_rank <= 10 | priority_rank <= 10 | (fishing_rank <= 20 & priority_rank <= 20),
+    SOVEREIGN1, ""
+  ))
+
+# Create the updated plot
+country_plot <- ggplot(country_combined_filtered, 
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells), alpha = 0.6, color = "darkblue") +
+  geom_label_repel(
+    data = filter(top_countries, label_country != ""), 
+    aes(label = label_country), 
+    size = 3,
+    max.overlaps = 20,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(2, 10)) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+      subtitle = "By Country (EDGE2)",
+      x = "Mean Fishing Hours (log scale)",
+      y = "Mean Conservation Priority (EDGE2)") +
+  theme_minimal()
+
+# Save the plots 
+ggsave(here("Outputs", "edge2_realm_fishing_priority_relationship.png"), realm_plot, width = 10, height = 8)
+ggsave(here("Outputs", "edge2_ecoregion_fishing_priority_relationship.png"), ecoregion_plot, width = 12, height = 9)
+ggsave(here("Outputs", "edge2_country_fishing_priority_relationship.png"), country_plot, width = 11, height = 8)
+```
