@@ -4616,29 +4616,45 @@ realm_plot <- ggplot(realm_combined,
   theme(legend.position = "none") # Hide legend as we have text labels
 
 # 2. ECOREGION Scatterplot
-# Select top ecoregions by fishing hours and priority for better visualization
-top_ecoregions <- ecoregion_combined %>%
-  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
-           mean_priority > quantile(mean_priority, 0.75)) %>%
-  mutate(label_ecoregion = ifelse(
-    fishing_cells > quantile(fishing_cells, 0.9) | 
-      mean_priority > quantile(mean_priority, 0.9), 
-    ECOREGION, ""
-  ))
+# For ecoregion plot - labeling ONLY top 5 for fishing and top 5 for priority
+# For ecoregion plot - strictly label ONLY top 5 for each metric
+# Get top 5 fishing ecoregions
+top_fishing <- ecoregion_combined %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
 
+# Get top 5 priority ecoregions
+top_priority <- ecoregion_combined %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+# Create a combined vector of ecoregions to label (removes duplicates)
+ecoregions_to_label <- unique(c(top_fishing, top_priority))
+
+# Create the labeling dataset
+label_data <- ecoregion_combined %>%
+  filter(ECOREGION %in% ecoregions_to_label)
+
+# Create the plot
 ecoregion_plot <- ggplot(ecoregion_combined, 
-                         aes(x = mean_fishing_hours, y = mean_priority)) +
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
   geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
-  geom_text_repel(data = top_ecoregions, 
-                  aes(label = label_ecoregion), 
-                  size = 3, max.overlaps = 10) +
+  geom_label_repel(
+    data = label_data, 
+    aes(label = ECOREGION), 
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
   scale_x_log10() +
   scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
   scale_color_npg() +
   labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
-       subtitle = "By Ecoregion (IUCN P100)",
-       x = "Mean Fishing Hours",
-       y = "Mean Conservation Priority (P100)") +
+       subtitle = "By Ecoregion (IUCN P100)", # Change for FUSE/EDGE2
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (P100)") + # Change for FUSE/EDGE2
   theme_minimal() +
   guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
 
@@ -4863,22 +4879,37 @@ realm_plot <- ggplot(realm_combined,
   theme(legend.position = "none") # Hide legend as we have text labels
 
 # 2. ECOREGION Scatterplot
-# Select top ecoregions by fishing hours and priority for better visualization
-top_ecoregions <- ecoregion_combined %>%
-  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
-           mean_priority > quantile(mean_priority, 0.75)) %>%
-  mutate(label_ecoregion = ifelse(
-    fishing_cells > quantile(fishing_cells, 0.9) | 
-      mean_priority > quantile(mean_priority, 0.9), 
-    ECOREGION, ""
-  ))
+# For FUSE ecoregion plot - strictly label ONLY top 5 for each metric
+# Get top 5 fishing ecoregions
+top_fishing <- ecoregion_combined %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
 
+# Get top 5 priority ecoregions
+top_priority <- ecoregion_combined %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+# Create a combined vector of ecoregions to label (removes duplicates)
+ecoregions_to_label <- unique(c(top_fishing, top_priority))
+
+# Create the labeling dataset
+label_data <- ecoregion_combined %>%
+  filter(ECOREGION %in% ecoregions_to_label)
+
+# Create the FUSE plot
 ecoregion_plot <- ggplot(ecoregion_combined, 
-                         aes(x = mean_fishing_hours, y = mean_priority)) +
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
   geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
-  geom_text_repel(data = top_ecoregions, 
-                  aes(label = label_ecoregion), 
-                  size = 3, max.overlaps = 10) +
+  geom_label_repel(
+    data = label_data, 
+    aes(label = ECOREGION), 
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
   scale_x_log10() +
   scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
   scale_color_npg() +
@@ -5111,22 +5142,37 @@ realm_plot <- ggplot(realm_combined,
   theme(legend.position = "none") # Hide legend as we have text labels
 
 # 2. ECOREGION Scatterplot
-# Select top ecoregions by fishing hours and priority for better visualization
-top_ecoregions <- ecoregion_combined %>%
-  filter(fishing_cells > quantile(fishing_cells, 0.75) | 
-           mean_priority > quantile(mean_priority, 0.75)) %>%
-  mutate(label_ecoregion = ifelse(
-    fishing_cells > quantile(fishing_cells, 0.9) | 
-      mean_priority > quantile(mean_priority, 0.9), 
-    ECOREGION, ""
-  ))
+# For EDGE2 ecoregion plot - strictly label ONLY top 5 for each metric
+# Get top 5 fishing ecoregions
+top_fishing <- ecoregion_combined %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
 
+# Get top 5 priority ecoregions
+top_priority <- ecoregion_combined %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+# Create a combined vector of ecoregions to label (removes duplicates)
+ecoregions_to_label <- unique(c(top_fishing, top_priority))
+
+# Create the labeling dataset
+label_data <- ecoregion_combined %>%
+  filter(ECOREGION %in% ecoregions_to_label)
+
+# Create the EDGE2 plot
 ecoregion_plot <- ggplot(ecoregion_combined, 
-                         aes(x = mean_fishing_hours, y = mean_priority)) +
+                      aes(x = mean_fishing_hours, y = mean_priority)) +
   geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
-  geom_text_repel(data = top_ecoregions, 
-                  aes(label = label_ecoregion), 
-                  size = 3, max.overlaps = 10) +
+  geom_label_repel(
+    data = label_data, 
+    aes(label = ECOREGION), 
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
   scale_x_log10() +
   scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
   scale_color_npg() +
