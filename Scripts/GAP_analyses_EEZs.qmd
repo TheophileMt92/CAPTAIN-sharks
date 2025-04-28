@@ -618,9 +618,9 @@ iucn_plot_NT <- ggplot(filtered_data, aes(x = IUCN_status, y = percentage, fill 
   scale_fill_manual(values = c("All Species" = "grey70", 
                                "Under-represented (No-take MPAs)" = "darkred")) +
   labs(
-    title = "IUCN Status Distribution Comparison",
-    subtitle = "All Species vs. Under-represented (No-take MPAs)",
-    x = "IUCN Red List Status",
+   # title = "IUCN Status Distribution Comparison",
+  #  subtitle = "All Species vs. Under-represented (No-take MPAs)",
+    x = "IUCN Red List threat status",
     y = "Percentage of Species",
     fill = ""
   ) +
@@ -1554,11 +1554,11 @@ violin_plot_nt <- ggplot(results_IUCN_filtered, aes(x = factor(IUCN_status, leve
   geom_violin(aes(fill = IUCN_status, color = IUCN_status), trim = FALSE, alpha = 0.5) +
   geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = "darkgray") +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.8) +
-  labs(x = "IUCN Status", y = "(%) Range within no-take MPAs") +
+  labs(x = "IUCN Red List threat status", y = "(%) Range within no-take MPAs") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5), legend.position = "none") +
   scale_x_discrete(limits = iucn_order) +
-  scale_y_continuous(transform = "sqrt") +
+  scale_y_continuous(transform = "sqrt", limits = c(0,80)) +
   scale_fill_manual(values = iucn_colors) +
   scale_color_manual(values = iucn_colors)
 
@@ -1604,6 +1604,8 @@ combined_plot <- violin_plot_with_significance_all + violin_plot_with_significan
 
 # Save the combined plot
 ggsave(here::here("combined_violin_plots_current_protection.png"), combined_plot, width = 12, height = 6, units = "in")
+
+ggsave(here::here("violin_plots_notake_protection.png"), violin_plot_nt, width = 6, height = 6, units = "in")
 
 ```
 
