@@ -217,8 +217,8 @@ continental_plot_FUSE_01 <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "Conservation Priorities in Continental Waters",
-       subtitle = "Index: FUSE, Budget: 0.1, Replicates: 10",
+  labs(#title = "Conservation Priorities in Continental Waters",
+       #subtitle = "Index: FUSE, Budget: 0.1, Replicates: 10",
        x = NULL, y = NULL) +
   my_theme
 
@@ -479,8 +479,8 @@ continental_plot_EDGE2_01 <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "Conservation Priorities in Continental Waters",
-       subtitle = "Index: EDGE2, Budget: 0.1, Replicates: 10",
+  labs(#title = "Conservation Priorities in Continental Waters",
+       #subtitle = "Index: EDGE2, Budget: 0.1, Replicates: 10",
        x = NULL, y = NULL) +
   my_theme
 
@@ -914,12 +914,12 @@ continental_sf_EDGE2_01$Latitude <- edge_coords[,2]
 # Create dataframes without geometry for joining
 fuse_df <- continental_sf_FUSE_01 %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(FUSE_Priority = Priority)
 
 edge_df <- continental_sf_EDGE2_01 %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(EDGE2_Priority = Priority)
 
 # Join the dataframes by coordinates
@@ -965,7 +965,7 @@ my_theme <- theme_minimal() +
   )
 
 # Create the difference plot
-difference_plot <- ggplot() +
+difference_plot_FUSE_EDGE2_01_continental <- ggplot() +
   geom_sf(data = difference_sf, aes(color = Priority_Difference), size = 0.5, alpha = 0.7) +
   geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
@@ -978,19 +978,19 @@ difference_plot <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "Difference in Conservation Priorities between FUSE and EDGE2",
-       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
-       x = NULL, y = NULL,
-       caption = "Positive values (red): FUSE assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
+  labs(#title = "Difference in Conservation Priorities between FUSE and EDGE2",
+       #subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL) +
+       #caption = "Positive values (red): FUSE assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
   my_theme
 
 # Display the plot
-difference_plot
+difference_plot_FUSE_EDGE2_01_continental
 
 # Save the difference plot
 ggsave(
   filename = here::here("outputs", "continental_priorities_FUSE_vs_EDGE2_difference.png"),
-  plot = difference_plot,
+  plot = difference_plot_FUSE_EDGE2_01_continental,
   width = 10,
   height = 6,
   dpi = 300,
@@ -3393,8 +3393,8 @@ IUCN_P100_plot <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "IUCN P100 Conservation Priorities",
-       subtitle = "Budget: 0.1, Replicates: 10",
+  labs(#title = "IUCN P100 Conservation Priorities",
+       #subtitle = "Budget: 0.1, Replicates: 10",
        x = NULL, y = NULL) +
   my_theme
 
@@ -3440,12 +3440,12 @@ continental_sf_FUSE_01$Latitude <- fuse_coords[,2]
 # Create dataframes without geometry for joining
 p100_df <- P100_sf %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(P100_Priority = Priority)
 
 fuse_df <- continental_sf_FUSE_01 %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(FUSE_Priority = Priority)
 
 # Join the dataframes by coordinates
@@ -3504,10 +3504,10 @@ p100_vs_fuse_continental_plot <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "Difference in Conservation Priorities between P100 and FUSE",
-       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
-       x = NULL, y = NULL,
-       caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): FUSE assigns higher priority") +
+  labs(#title = "Difference in Conservation Priorities between P100 and FUSE",
+       #subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL) +
+       #caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): FUSE assigns higher priority") +
   my_theme
 
 # Display the plot
@@ -3559,12 +3559,12 @@ continental_sf_EDGE2_01$Latitude <- edge2_coords[,2]
 # Create dataframes without geometry for joining
 p100_df <- P100_sf %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(P100_Priority = Priority)
 
 edge2_df <- continental_sf_EDGE2_01 %>%
   st_drop_geometry() %>%
-  select(Longitude, Latitude, Priority) %>%
+  dplyr::select(Longitude, Latitude, Priority) %>%
   rename(EDGE2_Priority = Priority)
 
 # Join the dataframes by coordinates - using inner_join to get only points in both datasets
@@ -3623,10 +3623,10 @@ p100_vs_edge2_continental_plot <- ggplot() +
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
-  labs(title = "Difference in Conservation Priorities between P100 and EDGE2",
-       subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
-       x = NULL, y = NULL,
-       caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
+  labs(#title = "Difference in Conservation Priorities between P100 and EDGE2",
+       #subtitle = "Continental Waters Only, Budget: 0.1, Replicates: 10",
+       x = NULL, y = NULL) +
+       #caption = "Positive values (red): P100 assigns higher priority\nNegative values (blue): EDGE2 assigns higher priority") +
   my_theme
 
 # Display the plot
@@ -5224,4 +5224,48 @@ country_plot <- ggplot(country_combined_filtered,
 ggsave(here("Outputs", "edge2_realm_fishing_priority_relationship.png"), realm_plot, width = 10, height = 8)
 ggsave(here("Outputs", "edge2_ecoregion_fishing_priority_relationship.png"), ecoregion_plot, width = 12, height = 9)
 ggsave(here("Outputs", "edge2_country_fishing_priority_relationship.png"), country_plot, width = 11, height = 8)
+```
+
+
+### Grid of six maps for manuscript: P100, FUSE and EDGE2 with differences
+
+```{r}
+# Load required libraries
+library(patchwork)
+library(ggplot2)
+
+# Assuming your plots are already created and stored as these variables:
+# IUCN_P100_plot
+# continental_plot_FUSE_01
+# continental_plot_EDGE2_01
+# p100_vs_edge2_continental_plot
+# p100_vs_fuse_continental_plot
+# difference_plot_FUSE_EDGE2_01_continental
+
+# Create a function to add labels (A), (B), etc.
+add_panel_labels <- function(plot, label) {
+  plot + 
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0, size = 12)
+    ) +
+    labs(title = paste0("(", label, ")"))
+}
+
+# Add labels to each plot
+IUCN_P100_plot_labeled <- add_panel_labels(IUCN_P100_plot, "A")
+continental_plot_FUSE_01_labeled <- add_panel_labels(continental_plot_FUSE_01, "B")
+continental_plot_EDGE2_01_labeled <- add_panel_labels(continental_plot_EDGE2_01, "C")
+p100_vs_fuse_continental_plot_labeled <- add_panel_labels(p100_vs_fuse_continental_plot, "D")
+p100_vs_edge2_continental_plot_labeled <- add_panel_labels(p100_vs_edge2_continental_plot, "E")
+difference_plot_FUSE_EDGE2_01_continental_labeled <- add_panel_labels(difference_plot_FUSE_EDGE2_01_continental, "F")
+
+# Combine plots into a 2x3 grid
+combined_plot <- (IUCN_P100_plot_labeled + continental_plot_FUSE_01_labeled + continental_plot_EDGE2_01_labeled) /
+                 (p100_vs_fuse_continental_plot_labeled + p100_vs_edge2_continental_plot_labeled +  difference_plot_FUSE_EDGE2_01_continental_labeled)
+
+# Display the combined plot
+combined_plot
+
+# Save the combined plot if needed
+ggsave(here::here("six_maps_continental_10.png"), combined_plot, width = 15, height = 10, dpi = 300)
 ```
