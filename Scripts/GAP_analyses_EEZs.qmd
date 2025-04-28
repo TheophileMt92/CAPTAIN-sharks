@@ -4271,4 +4271,108 @@ ggplot(top20_data, aes(x = mean_SES, y = SOVEREIGN1_ordered)) +
 # Save the results
 ggsave(here("Plots", "eez_ses_boxplot_top20_horizontal.png"), width = 10, height = 8)
 saveRDS(intersect_df, here("Data", "eez_ses_data.rds"))
+
+# Calculate mean fishing hours by country (sovereign state)
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(here)
+library(tidyr)
+library(ggplot2)
+
+# Load your data 
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE)
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  # Filter out any NA values if needed
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  # Create an sf object with points
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure CRS match
+st_crs(fishing_sf) <- st_crs(eez)
+
+# Fix the geometry issues in the EEZ shapefile
+eez_fixed <- eez %>%
+  st_make_valid() %>%  # Fix any invalid geometries
+  select(SOVEREIGN1)   # Select only the column we need
+
+# Check if geometries are now valid
+if(all(st_is_valid(eez_fixed))) {
+  print("All EEZ geometries are now valid")
+} else {
+  print("Some EEZ geometries are still invalid")
+}
+
+# Use a different spatial joining approach that's more robust to topology errors
+# Method 1: Try regular spatial join with fixed geometries
+fishing_with_country <- st_join(fishing_sf, eez_fixed)
+
+# If that still fails, try alternative approaches:
+# Method 2: Point-in-polygon operation that's more tolerant
+if (!exists("fishing_with_country")) {
+  fishing_with_country <- fishing_sf
+  fishing_with_country$SOVEREIGN1 <- NA
+  
+  # Loop through each EEZ polygon (this is slower but more robust)
+  for(i in 1:nrow(eez_fixed)) {
+    current_eez <- eez_fixed[i,]
+    # Find points in this EEZ
+    points_in_eez <- st_intersects(fishing_sf, current_eez, sparse = TRUE)
+    # Get indices of points in this EEZ
+    indices <- unlist(points_in_eez)
+    # Assign SOVEREIGN1 value to these points
+    if(length(indices) > 0) {
+      fishing_with_country$SOVEREIGN1[indices] <- current_eez$SOVEREIGN1
+    }
+  }
+}
+
+# Method 3: If still failing, try simplifying the EEZ geometries
+if (!exists("fishing_with_country")) {
+  eez_simplified <- eez_fixed %>%
+    st_simplify(dTolerance = 0.01)  # Simplify geometry (adjust tolerance as needed)
+  
+  fishing_with_country <- st_join(fishing_sf, eez_simplified)
+}
+
+# Label points not in any EEZ as "High Seas"
+fishing_with_country <- fishing_with_country %>%
+  mutate(SOVEREIGN1 = ifelse(is.na(SOVEREIGN1), "High Seas", SOVEREIGN1))
+
+# Calculate statistics by country with 5th and 95th percentiles
+country_statistics <- fishing_with_country %>%
+  st_drop_geometry() %>%
+  group_by(SOVEREIGN1) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_fishing_hours))
+
+# View results
+print(country_statistics)
+
+# Top 20 countries by mean fishing hours
+top_countries <- country_statistics %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(20)
+
+# Visualization of top countries
+ggplot(top_countries, aes(x = reorder(SOVEREIGN1, mean_fishing_hours), y = mean_fishing_hours)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = q05, ymax = q95), width = 0.2) +
+  geom_point(aes(y = median_fishing_hours), color = "red", size = 2) +
+  labs(title = "Top 20 Countries by Mean Fishing Hours in EEZs",
+       subtitle = "Bars: mean values | Red points: median values | Error bars: 5th-95th percentiles",
+       x = "Country",
+       y = "Fishing Hours") +
+  coord_flip() +
+  theme_minimal()
+
 ```
