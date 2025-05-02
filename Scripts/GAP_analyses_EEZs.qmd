@@ -401,6 +401,48 @@ significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
 # Identify significant species
 significant_species(comparison_ALL, "ALL")
 significant_species(comparison_NT, "No-Take")
+
+#Stacked bar chart
+# Create a summary dataframe for plotting
+summary_NT <- data.frame(
+  Representation = c("Under-represented", "Equally represented", "Over-represented"),
+  Percentage = c(
+    mean(comparison_NT$difference < 0, na.rm=TRUE) * 100,
+    100 - mean(comparison_NT$difference > 0, na.rm=TRUE) * 100 - mean(comparison_NT$difference < 0, na.rm=TRUE) * 100,
+    mean(comparison_NT$difference > 0, na.rm=TRUE) * 100
+  )
+)
+
+# Order the factor levels in reverse for proper stacking
+summary_NT$Representation <- factor(summary_NT$Representation, 
+                                   levels = c("Over-represented", "Equally represented", "Under-represented"))
+
+# Create the horizontal stacked barplot
+stacked_bar_chart = ggplot(summary_NT, aes(x = 1, y = Percentage, fill = Representation)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.5) +
+  scale_fill_manual(values = c("Over-represented" = "#56B4E9", 
+                               "Equally represented" = "#999999", 
+                               "Under-represented" = "#E69F00"),
+                    # Reverse the order of legend items
+                    breaks = c("Under-represented", "Equally represented", "Over-represented")) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4) +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "Percentage of species (%)"
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
 ```
 
 **Key message:** \>60% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs).
@@ -621,7 +663,7 @@ iucn_plot_NT <- ggplot(filtered_data, aes(x = IUCN_status, y = percentage, fill 
    # title = "IUCN Status Distribution Comparison",
   #  subtitle = "All Species vs. Under-represented (No-take MPAs)",
     x = "IUCN Red List threat status",
-    y = "Percentage of Species",
+    y = "Percentage of species (%)",
     fill = ""
   ) +
   theme_classic() +  # Using theme_classic() for a white background with minimal elements
@@ -1311,8 +1353,8 @@ continental_plot_NT <- ggplot() +
                          title.position = "top", title.hjust = 0.5)
   ) +
   coord_sf() +
-  labs(title = "Standardized Effect Size (SES) in Continental Waters",
-       subtitle = "No-take MPAs",
+  labs(#title = "Standardized Effect Size (SES) in Continental Waters",
+       #subtitle = "No-take MPAs",
        x = NULL, y = NULL) +
   my_theme
 
@@ -1350,6 +1392,29 @@ ggsave(here::here("outputs","SES_map_highseas_NT.png"),
        bg = "white")
 ```
 
+# Grid of three GAP analysis plots for manuscript 
+```{r}
+
+library(ggpubr)
+
+# Arrange the plots in a grid with the specified height ratios and add labels
+grid_plot <- ggarrange(
+  stacked_bar_chart,
+  iucn_plot_NT,
+  continental_plot_NT,
+  ncol = 1,
+  heights = c(0.25, 0.6, 1),
+  labels = c("(A)", "(B)", "(C)"),
+  font.label = list(size = 16, face = "bold"),
+  vjust = 1,
+  hjust = -0.1
+)    
+
+# Save the plot if needed
+ggsave(here::here("outputs","combined_plot_GAP_analysis.png"), grid_plot, width = 8.5, height = 12, dpi = 300, bg="white")
+
+```
+
 # Relate to IUCN status
 
 1.  Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with difference tests between categories
@@ -1363,6 +1428,14 @@ IUCN$species <- gsub("_", " ", IUCN$Species)
 results <- read.csv(here::here("Data", "species_mpa_coverage_ALL_and_NT.csv"))
 
 results_IUCN=left_join(IUCN, results, by=c("species"))
+
+library(sandwich)
+library(lmtest)
+
+model <- lm(percentage_in_ALL_MPA ~ iucn_GE, data=results_IUCN)
+# Apply robust standard errors
+coeftest(model, vcov=vcovHC(model, type="HC1"))
+summary(model)
 
 library(ggplot2)
 library(dplyr)
