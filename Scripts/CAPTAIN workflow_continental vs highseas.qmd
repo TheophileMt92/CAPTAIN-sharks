@@ -2355,9 +2355,16 @@ saveRDS(combined_protection_FUSE_03, file = here::here("Data", "combined_protect
 ### Budget: 0.1
 
 ```{r}
-# Protection fraction summary
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
 # Read the data
-prot_frac <- readRDS(here::here("Data/protect_fraction_summary_FUSE_01_continental.rds"))
+overlap_summary <- read_csv(here::here("Outputs", "FUSE_continental_01_species_overlap_summary.csv"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 
@@ -2365,33 +2372,57 @@ sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 all_species <- sp$FUSE$info$Species
 all_FUSE <- sp$FUSE$info$FUSE
 
-# Get unique species in your data
-Species_in_data <- sort(unique(sp_in_data$species_name))
-
 # Create a mapping between species and their FUSE values
 species_FUSE_map <- data.frame(
   Species = all_species,
   FUSE = as.numeric(all_FUSE)
 )
 
-# Filter the mapping to only include species in your data
-filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+# Make sure overlap_summary has a Species column
+overlap_summary$Species <- overlap_summary$species
 
-# Add Species and FUSE to prot_frac
-prot_frac$Species <- filtered_species_FUSE$Species
-prot_frac$FUSE <- filtered_species_FUSE$FUSE
+# Filter the overlap summary to include only species in all_species
+overlap_summary_filtered <- overlap_summary %>% filter(Species %in% all_species)
 
-# Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+# Get the count of how many species from all_species are in our overlap data
+species_in_overlap <- sum(all_species %in% overlap_summary$Species)
+cat("Species from the conservation metrics found in overlap data:", species_in_overlap, 
+    "out of", length(all_species), "\n")
+
+# Convert overlap percentage to a fraction (0-1 scale)
+overlap_summary_filtered$overlap_fraction <- overlap_summary_filtered$mean_overlap_percentage / 100
+
+# Merge with FUSE values
+overlap_with_FUSE <- merge(overlap_summary_filtered, species_FUSE_map, by = "Species", all.x = TRUE)
+
+# Filter out rows with NA FUSE values
+overlap_with_FUSE <- overlap_with_FUSE %>% filter(!is.na(FUSE))
+
+# Count species that reach the 10% protection target
+# Only from the species in all_species
+species_meeting_target <- overlap_summary_filtered %>%
+  filter(mean_overlap_percentage > 10)
+
+# Get the count and percentage
+count_meeting_target <- nrow(species_meeting_target)
+total_species <- length(all_species)  # Use the total from all_species
+percentage_meeting_target <- (count_meeting_target / total_species) * 100
+
+cat("\nSpecies meeting 10% protection target:\n")
+cat("Count:", count_meeting_target, "out of", total_species, "species\n")
+cat("Percentage:", round(percentage_meeting_target, 2), "%\n")
+
+# Create histogram for overlap fraction
+hist_overlap <- ggplot(overlap_with_FUSE, aes(x = overlap_fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Mean Protect Fraction\n(Continental)",
-       x = "Mean Protect Fraction",
+  labs(title = "Histogram of Species Range Overlap\n(Continental)",
+       x = "Range Overlap Fraction",
        y = "Count")
 
 # Create histogram for FUSE
-hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
+hist_fuse <- ggplot(overlap_with_FUSE, aes(x = FUSE)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of FUSE Scores\n(Continental)",
@@ -2399,21 +2430,25 @@ hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(overlap_with_FUSE, aes(x = FUSE, y = overlap_fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction (Continental)",
+  labs(title = "Scatterplot: FUSE vs Species Range Overlap (Continental)",
        x = "FUSE Score",
-       y = "Mean Protect Fraction")
+       y = "Range Overlap Fraction")
 
 # Arrange plots in a grid
 grid_plot <- grid.arrange(
-  hist_protect, hist_fuse, scatter_plot,
+  hist_overlap, hist_fuse, scatter_plot,
   layout_matrix = rbind(c(1,2), c(3,3)),
   widths = c(1, 1),
   heights = c(1, 1)
 )
+
+# Save the plot
+ggsave(here::here("Outputs", "FUSE_continental_01_correlation_plot.png"), 
+       grid_plot, width = 10, height = 8)
 
 #High seas waters
 # Protection fraction summary for high seas
@@ -2960,42 +2995,71 @@ saveRDS(combined_protection_EDGE2_03, file = here::here("Data", "combined_protec
 
 ```{r}
 # Protection fraction summary
-# Read the data
-prot_frac <- readRDS(here::here("Data/protect_fraction_summary_EDGE2_01_continental.rds"))
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Read the overlap summary data we just created
+overlap_summary <- read_csv(here::here("Outputs", "EDGE2_continental_01_species_overlap_summary.csv"))
 sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
 sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
 
-# Extract all species names and EDGE2 values from sp
+# Extract all species names from sp
 all_species <- sp$EDGE2$info$Species
-all_EDGE2 <- sp$EDGE2$info$EDGE2
 
-# Get unique species in your data
-Species_in_data <- sort(unique(sp_in_data$species_name))
-
-# Create a mapping between species and their EDGE2 values
-species_EDGE2_map <- data.frame(
-  Species = all_species,
-  EDGE2 = as.numeric(all_EDGE2)
+# Extract P100 values
+EDGE2_info <- data.frame(
+  Species = sp$EDGE2$info$Species,
+  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
 )
 
-# Filter the mapping to only include species in your data
-filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+# Filter overlap_summary to include only species in all_species
+overlap_summary$Species <- overlap_summary$species
+overlap_summary_filtered <- overlap_summary %>% filter(Species %in% all_species)
 
-# Add Species and EDGE2 to prot_frac
-prot_frac$Species <- filtered_species_EDGE2$Species
-prot_frac$EDGE2 <- filtered_species_EDGE2$EDGE2
+# Get the count of how many species from all_species are in our overlap data
+species_in_overlap <- sum(all_species %in% overlap_summary$Species)
+cat("Species from the conservation metrics found in overlap data:", species_in_overlap, 
+    "out of", length(all_species), "\n")
 
-# Create histogram for Mean_Protect_Fraction
-hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+# Convert overlap percentage to a fraction (0-1 scale)
+overlap_summary_filtered$overlap_fraction <- overlap_summary_filtered$mean_overlap_percentage / 100
+
+# Merge with EDGE2 values
+overlap_with_EDGE2 <- merge(overlap_summary_filtered, EDGE2_info, by = "Species", all.x = TRUE)
+
+# Filter out rows with NA P100 values
+overlap_with_EZDGE2 <- overlap_with_EDGE2 %>% filter(!is.na(EDGE2))
+
+# Count species that reach the 10% protection target
+# Only from the species in all_species
+species_meeting_target <- overlap_summary_filtered %>%
+  filter(mean_overlap_percentage > 10)
+
+# Get the count and percentage
+count_meeting_target <- nrow(species_meeting_target)
+total_species <- length(all_species)  # Use the total from all_species
+percentage_meeting_target <- (count_meeting_target / total_species) * 100
+
+cat("\nSpecies meeting 10% protection target:\n")
+cat("Count:", count_meeting_target, "out of", total_species, "species\n")
+cat("Percentage:", round(percentage_meeting_target, 2), "%\n")
+
+# Create histogram for overlap fraction
+hist_overlap <- ggplot(overlap_with_EDGE2, aes(x = overlap_fraction)) +
   geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
   scale_x_continuous(limits=c(0,1)) + 
   theme_minimal() +
-  labs(title = "Histogram of Mean Protect Fraction\n(Continental)",
-       x = "Mean Protect Fraction",
+  labs(title = "Histogram of Species Range Overlap\n(Continental)",
+       x = "Range Overlap Fraction",
        y = "Count")
 
 # Create histogram for EDGE2
-hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
+hist_EDGE2 <- ggplot(overlap_with_EDGE2, aes(x = EDGE2)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   theme_minimal() +
   labs(title = "Histogram of EDGE2 Scores\n(Continental)",
@@ -3003,21 +3067,25 @@ hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
        y = "Count")
 
 # Create scatterplot
-scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+scatter_plot <- ggplot(overlap_with_EDGE2, aes(x = EDGE2, y = overlap_fraction)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   theme_minimal() +
   scale_y_continuous(limits=c(0,1)) + 
-  labs(title = "Scatterplot: EDGE2 vs Mean Protect Fraction (Continental)",
+  labs(title = "Scatterplot: EDGE2 vs Species Range Overlap (Continental)",
        x = "EDGE2 Score",
-       y = "Mean Protect Fraction")
+       y = "Range Overlap Fraction")
 
 # Arrange plots in a grid
 grid_plot <- grid.arrange(
-  hist_protect, hist_EDGE2, scatter_plot,
+  hist_overlap, hist_EDGE2, scatter_plot,
   layout_matrix = rbind(c(1,2), c(3,3)),
   widths = c(1, 1),
   heights = c(1, 1)
 )
+
+# Save the plot
+ggsave(here::here("Outputs", "EDGE2_continental_01_correlation_plot.png"), 
+       grid_plot, width = 10, height = 8)
 
 #High seas waters
 # Protection fraction summary for high seas
@@ -3259,6 +3327,123 @@ saveRDS(combined_protection_EDGE2_01, file = here::here("Data", "combined_protec
 library(dplyr)
 prot_frac <- prot_frac %>% arrange(desc(Mean_Protect_Fraction))
 
+```
+
+## P100 : species level priorities 
+
+### Budget: 0.1
+
+```{r}
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Read the overlap summary data from P100 analysis
+overlap_summary <- read_csv(here::here("Outputs", "P100_continental_01_species_overlap_summary.csv"))
+
+# Read the shark data with P100 values
+shark_data <- readRDS(here::here("Data", "My dataframes", "continental_shark_conservation_metrics_10_harmonised_IUCN.rds"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract P100 values from shark_data
+p100_info <- shark_data$iucn_P100$info
+p100_values <- data.frame(
+  Species = p100_info$species_name,
+  P100 = p100_info$iucn_P100
+)
+
+# Get the full list of species from p100_info
+all_p100_species <- p100_info$species_name
+cat("Total number of species in P100 data:", length(all_p100_species), "\n")
+
+# Rename the species column in overlap_summary to match the format in p100_values
+overlap_summary$Species <- overlap_summary$species
+
+# Filter the overlap summary to only include species in all_p100_species
+overlap_summary_filtered <- overlap_summary %>% filter(Species %in% all_p100_species)
+
+# Count species that reach the 10% protection target
+# Only from the species in all_p100_species
+species_meeting_target <- overlap_summary_filtered %>%
+  filter(mean_overlap_percentage > 10)
+
+# Get the count and percentage
+count_meeting_target <- nrow(species_meeting_target)
+total_species <- length(all_p100_species)  # Use the total from all_p100_species
+percentage_meeting_target <- (count_meeting_target / total_species) * 100
+
+cat("\nSpecies meeting 10% protection target:\n")
+cat("Count:", count_meeting_target, "out of", total_species, "species\n")
+cat("Percentage:", round(percentage_meeting_target, 2), "%\n")
+
+# Create histogram for overlap fraction
+hist_overlap <- ggplot(overlap_with_p100, aes(x = overlap_fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Species Range Overlap\n(Continental)",
+       x = "Range Overlap Fraction",
+       y = "Count")
+
+# Create histogram for P100
+hist_p100 <- ggplot(overlap_with_p100, aes(x = P100)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of P100 Scores\n(Continental)",
+       x = "P100 Score",
+       y = "Count")
+
+# Calculate summary statistics for each unique P100 value
+p100_summary <- overlap_with_p100 %>%
+  group_by(P100) %>%
+  summarize(
+    mean_overlap = mean(overlap_fraction, na.rm = TRUE),
+    sd_overlap = sd(overlap_fraction, na.rm = TRUE),
+    n = n()
+  )
+
+print(p100_summary)
+
+# Create scatterplot with means and standard deviations
+scatter_plot <- ggplot() +
+  # Original data points
+  geom_point(data = overlap_with_p100, aes(x = P100, y = overlap_fraction), 
+             alpha = 0.6, color = "darkblue") +
+  # Add means as red dots
+  geom_point(data = p100_summary, aes(x = P100, y = mean_overlap), 
+             color = "red", size = 3) +
+  # Add standard deviation as error bars
+  geom_errorbar(data = p100_summary, 
+                aes(x = P100, 
+                    ymin = pmax(0, mean_overlap - sd_overlap), 
+                    ymax = pmin(1, mean_overlap + sd_overlap)),
+                width = 0.03, color = "red", size = 1) +
+  # Add text labels with N count
+  geom_text(data = p100_summary, 
+            aes(x = P100 + 0.05, y = mean_overlap, 
+                label = paste("n =", n)),
+            color = "red", size = 3) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1)) + 
+  labs(title = "Scatterplot: P100 vs Species Range Overlap (Continental)",
+       x = "P100 Score",
+       y = "Range Overlap Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_overlap, hist_p100, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the plot
+ggsave(here::here("Outputs", "P100_continental_01_correlation_plot.png"), 
+       grid_plot, width = 10, height = 8)
 ```
 
 ## IUCN conservation priority maps 
@@ -5754,4 +5939,867 @@ print(combined_grid)
 # Save the combined plot
 ggsave(here::here("Outputs", "Conservation_Priorities_vs_Fishing_Combined.png"), combined_grid, 
        width = 10, height = 14, dpi = 300)
+```
+
+# Overlap between priority and species ranges
+
+### P100 continental 0.1
+
+```{r}
+# Load required libraries
+library(here)
+library(sp)
+library(raster)
+library(terra)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(sf)
+
+# Set the scenario name for file naming
+scenario <- "P100_continental_01"
+
+# Load the already filtered continental data
+continental_puvsp_harmonised <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_puvsp_harmonised.csv"))
+continental_pu_coords <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_pu_coords.csv"))
+
+# Rename coordinate columns to match expected format
+names(continental_pu_coords)[c(2,3)] <- c("lon", "lat")
+
+# Merge and create wide format dataset
+continental_puvsp <- merge(continental_puvsp_harmonised, continental_pu_coords, by = "id")
+
+# Convert to wide format
+continental_puvsp_wide <- continental_puvsp %>%
+  select(id, lon, lat, species_name, amount) %>%
+  pivot_wider(
+    id_cols = c(id, lon, lat),
+    names_from = species_name,
+    values_from = amount,
+    values_fill = 0
+  )
+
+# Report on the continental dataset
+cat("Number of cells in continental waters:", nrow(continental_puvsp_wide), "\n")
+cat("Number of species:", ncol(continental_puvsp_wide) - 3, "\n")  # Subtract id, lon, lat columns
+
+# Create a cell key for matching with priority areas
+continental_puvsp_wide$cell_key <- paste(continental_puvsp_wide$lon, continental_puvsp_wide$lat, sep = "_")
+
+# Create a dataframe of species names
+species_names <- names(continental_puvsp_wide)[4:(ncol(continental_puvsp_wide)-1)]  # Excluding id, lon, lat, cell_key
+cat("Found", length(species_names), "species in the dataset\n")
+
+# List all RDS files in the output directory
+rds_files <- list.files(here::here("Outputs", "P100_rds_individual"), 
+                        pattern = "P100_results_continental_binary_budget0.1_seed\\d+\\.rds$",
+                        full.names = TRUE)
+
+cat("Found", length(rds_files), "RDS files to process for", scenario, "\n")
+
+# Function to calculate overlap using direct grid cell comparison
+calculate_grid_overlap <- function(priority_file, species_data, species_list) {
+  # Read the RDS file
+  cat("Processing:", basename(priority_file), "\n")
+  priority_df <- readRDS(priority_file)
+  
+  # Priority coordinates
+  x_col <- "Longitude"
+  y_col <- "Latitude"
+  
+  # Print information about the priority values
+  cat("Priority values summary:\n")
+  print(table(priority_df$Priority))
+  
+  # Extract seed number from filename
+  seed <- gsub(".*seed(\\d+)\\.rds$", "\\1", priority_file)
+  
+  # Check if there are any positive priority values
+  if (sum(priority_df$Priority > 0) == 0) {
+    cat("WARNING: No positive priority values found in this file!\n")
+    # Return an empty result with the correct structure
+    empty_results <- data.frame(
+      species = species_list,
+      seed = seed,
+      scenario = scenario,
+      total_range_points = NA,
+      overlap_points = 0,
+      overlap_percentage = 0,
+      stringsAsFactors = FALSE
+    )
+    return(empty_results)
+  }
+  
+  # Keep only cells with positive priority
+  priority_cells <- priority_df[priority_df$Priority > 0, c(x_col, y_col)]
+  cat("Number of priority cells:", nrow(priority_cells), "\n")
+  
+  # Initialize results dataframe
+  results <- data.frame(
+    species = species_list,
+    seed = seed,
+    scenario = scenario,
+    total_range_points = NA,
+    overlap_points = NA,
+    overlap_percentage = NA,
+    stringsAsFactors = FALSE
+  )
+  
+  # Round coordinates to ensure exact matches
+  priority_cells$rounded_lon <- round(priority_cells[[x_col]] * 2) / 2
+  priority_cells$rounded_lat <- round(priority_cells[[y_col]] * 2) / 2
+  
+  # Create a lookup table for faster matching
+  priority_lookup <- paste(priority_cells$rounded_lon, priority_cells$rounded_lat, sep = "_")
+  
+  # Mark which cells are priority areas
+  species_data$is_priority <- species_data$cell_key %in% priority_lookup
+  
+  # For each species, calculate overlap
+  for (i in 1:length(species_list)) {
+    sp <- species_list[i]
+    
+    # Extract presence/absence data for this species
+    # Skip if the species column doesn't exist
+    if (!sp %in% names(species_data)) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Get cells where this species is present
+    sp_present <- !is.na(species_data[[sp]]) & species_data[[sp]] > 0
+    sp_cells <- species_data[sp_present, ]
+    
+    # Count total number of cells in species range
+    total_cells <- sum(sp_present)
+    
+    # If species has no range cells, skip
+    if (total_cells == 0) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Count cells that overlap with priority areas
+    overlap_cells <- sum(sp_cells$is_priority)
+    
+    # Calculate overlap percentage
+    overlap_percentage <- (overlap_cells / total_cells) * 100
+    
+    # Store results
+    results$total_range_points[i] <- total_cells
+    results$overlap_points[i] <- overlap_cells
+    results$overlap_percentage[i] <- overlap_percentage
+    
+    # Print progress every 50 species
+    if (i %% 50 == 0 || i == length(species_list)) {
+      cat("Processed", i, "of", length(species_list), "species\n")
+      cat("Using scenario:", scenario, "\n")
+    }
+  }
+  
+  return(results)
+}
+
+# Process all RDS files using the grid cell comparison approach
+all_results <- list()
+
+for (i in 1:length(rds_files)) {
+  file <- rds_files[i]
+  tryCatch({
+    # Use continental_puvsp_wide instead of filtering puvsp_marine
+    result <- calculate_grid_overlap(file, continental_puvsp_wide, species_names)
+    all_results[[i]] <- result
+  }, error = function(e) {
+    cat("Error processing file", basename(file), ":", e$message, "\n")
+    
+    # Try to load and print info about the file for debugging
+    tryCatch({
+      test_df <- readRDS(file)
+      cat("File structure:\n")
+      print(head(test_df))
+      cat("Priority value counts:\n")
+      print(table(test_df$Priority))
+    }, error = function(err) {
+      cat("Could not load file for debugging:", err$message, "\n")
+    })
+  })
+}
+
+# Continue with analysis if we have results
+if (length(all_results) > 0) {
+  # Combine all results
+  combined_results <- bind_rows(all_results)
+  
+  # Calculate summary statistics by species
+  summary_stats <- combined_results %>%
+    group_by(species) %>%
+    summarize(
+      scenario = first(scenario),
+      mean_overlap_percentage = mean(overlap_percentage, na.rm = TRUE),
+      sd_overlap_percentage = sd(overlap_percentage, na.rm = TRUE),
+      min_overlap_percentage = min(overlap_percentage, na.rm = TRUE),
+      max_overlap_percentage = max(overlap_percentage, na.rm = TRUE),
+      n_samples = sum(!is.na(overlap_percentage)),
+      mean_total_range = mean(total_range_points, na.rm = TRUE)
+    ) %>%
+    arrange(desc(mean_overlap_percentage))
+  
+  # Save the detailed results with scenario name
+  write_csv(combined_results, here::here("Outputs", paste0(scenario, "_species_overlap_by_seed.csv")))
+  
+  # Save the summary statistics with scenario name
+  write_csv(summary_stats, here::here("Outputs", paste0(scenario, "_species_overlap_summary.csv")))
+  
+  # Create visualization of the results with scenario in title
+  # Filter to species with sufficient range size for better visualization
+  plot_data <- summary_stats %>% 
+    filter(mean_total_range > 10) %>%  # Only show species with at least 10 grid cells
+    head(30)  # Top 30 species by overlap percentage
+  
+  ggplot(plot_data, aes(x = reorder(species, -mean_overlap_percentage), y = mean_overlap_percentage)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(aes(ymin = mean_overlap_percentage - sd_overlap_percentage, 
+                      ymax = mean_overlap_percentage + sd_overlap_percentage), width = 0.2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(title = paste("Average Percentage of Species Range Overlapping with Priority Areas -", scenario),
+         subtitle = "Top 30 species with range size > 10 cells (Continental waters only)",
+         x = "Species",
+         y = "Overlap Percentage (mean ± SD)")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_species_overlap_plot.png")), width = 12, height = 8)
+  
+  # Print overall average overlap percentage
+  overall_mean <- mean(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  overall_sd <- sd(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  
+  cat("\nOverall average overlap percentage across all species for", scenario, ": ", 
+      round(overall_mean, 2), "% (SD = ", round(overall_sd, 2), "%)\n", sep = "")
+  
+  # Also save the overall statistics to a file
+  overall_stats <- data.frame(
+    scenario = scenario,
+    mean_overlap_across_species = overall_mean,
+    sd_overlap_across_species = overall_sd,
+    n_species = nrow(summary_stats),
+    n_replicates = length(all_results)
+  )
+  
+  write_csv(overall_stats, here::here("Outputs", paste0(scenario, "_overall_stats.csv")))
+  
+  # Additional visualization showing distribution of overlap percentages
+  ggplot(summary_stats, aes(x = mean_overlap_percentage)) +
+    geom_histogram(bins = 20, fill = "steelblue", color = "black") +
+    theme_minimal() +
+    labs(title = paste("Distribution of Species Range Overlap with Priority Areas -", scenario),
+         subtitle = "Continental waters only (excluding high seas)",
+         x = "Mean Overlap Percentage",
+         y = "Number of Species")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_overlap_distribution.png")), width = 8, height = 6)
+  
+  # Create a verification map of a sample of cells to confirm they're continental
+  set.seed(123)
+  sample_cells <- continental_puvsp_wide[sample(nrow(continental_puvsp_wide), min(5000, nrow(continental_puvsp_wide))), ]
+  
+  # Get world map for background
+  world_map <- map_data("world")
+  
+  # Create verification map
+  ggplot() +
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
+                 fill = "lightgray", color = "darkgray", size = 0.2) +
+    geom_point(data = sample_cells, aes(x = lon, y = lat), 
+               color = "blue", size = 0.5, alpha = 0.3) +
+    coord_fixed(1.3) +
+    theme_minimal() +
+    labs(title = "Continental Waters Grid Cells",
+         subtitle = paste0("Sample of ", nrow(sample_cells), " cells from continental_puvsp_wide"),
+         x = "Longitude", y = "Latitude") +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_continental_cells_map.png")), width = 12, height = 8)
+  
+} else {
+  cat("No results were successfully processed. Check the errors above.\n")
+}
+```
+
+### FUSE continental 0.1
+
+```{r}
+# Load required libraries
+library(here)
+library(sp)
+library(raster)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(sf)
+
+# Set the scenario name for file naming
+scenario <- "FUSE_continental_01"
+
+# Load the already filtered continental data
+continental_puvsp_harmonised <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_puvsp_harmonised.csv"))
+continental_pu_coords <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_pu_coords.csv"))
+
+# Rename coordinate columns to match expected format
+names(continental_pu_coords)[c(2,3)] <- c("lon", "lat")
+
+# Merge and create wide format dataset
+continental_puvsp <- merge(continental_puvsp_harmonised, continental_pu_coords, by = "id")
+
+# Convert to wide format
+continental_puvsp_wide <- continental_puvsp %>%
+  select(id, lon, lat, species_name, amount) %>%
+  pivot_wider(
+    id_cols = c(id, lon, lat),
+    names_from = species_name,
+    values_from = amount,
+    values_fill = 0
+  )
+
+# Report on the continental dataset
+cat("Number of cells in continental waters:", nrow(continental_puvsp_wide), "\n")
+cat("Number of species:", ncol(continental_puvsp_wide) - 3, "\n")  # Subtract id, lon, lat columns
+
+# Create a cell key for matching with priority areas
+continental_puvsp_wide$cell_key <- paste(continental_puvsp_wide$lon, continental_puvsp_wide$lat, sep = "_")
+
+# Create a dataframe of species names
+species_names <- names(continental_puvsp_wide)[4:(ncol(continental_puvsp_wide)-1)]  # Excluding id, lon, lat, cell_key
+cat("Found", length(species_names), "species in the dataset\n")
+
+# List all RDS files in the output directory
+rds_files <- list.files(here::here("Outputs", "FUSE_rds_individual"), 
+                        pattern = "FUSE_results_continental_binary_budget0.1_seed\\d+\\.rds$",
+                        full.names = TRUE)
+
+cat("Found", length(rds_files), "RDS files to process for", scenario, "\n")
+
+# Function to calculate overlap using direct grid cell comparison
+calculate_grid_overlap <- function(priority_file, species_data, species_list) {
+  # Read the RDS file
+  cat("Processing:", basename(priority_file), "\n")
+  priority_df <- readRDS(priority_file)
+  
+  # Priority coordinates
+  x_col <- "Longitude"
+  y_col <- "Latitude"
+  
+  # Print information about the priority values
+  cat("Priority values summary:\n")
+  print(table(priority_df$Priority))
+  
+  # Extract seed number from filename
+  seed <- gsub(".*seed(\\d+)\\.rds$", "\\1", priority_file)
+  
+  # Check if there are any positive priority values
+  if (sum(priority_df$Priority > 0) == 0) {
+    cat("WARNING: No positive priority values found in this file!\n")
+    # Return an empty result with the correct structure
+    empty_results <- data.frame(
+      species = species_list,
+      seed = seed,
+      scenario = scenario,
+      total_range_points = NA,
+      overlap_points = 0,
+      overlap_percentage = 0,
+      stringsAsFactors = FALSE
+    )
+    return(empty_results)
+  }
+  
+  # Keep only cells with positive priority
+  priority_cells <- priority_df[priority_df$Priority > 0, c(x_col, y_col)]
+  cat("Number of priority cells:", nrow(priority_cells), "\n")
+  
+  # Initialize results dataframe
+  results <- data.frame(
+    species = species_list,
+    seed = seed,
+    scenario = scenario,
+    total_range_points = NA,
+    overlap_points = NA,
+    overlap_percentage = NA,
+    stringsAsFactors = FALSE
+  )
+  
+  # Round coordinates to ensure exact matches
+  priority_cells$rounded_lon <- round(priority_cells[[x_col]] * 2) / 2
+  priority_cells$rounded_lat <- round(priority_cells[[y_col]] * 2) / 2
+  
+  # Create a lookup table for faster matching
+  priority_lookup <- paste(priority_cells$rounded_lon, priority_cells$rounded_lat, sep = "_")
+  
+  # Mark which cells are priority areas
+  species_data$is_priority <- species_data$cell_key %in% priority_lookup
+  
+  # For each species, calculate overlap
+  for (i in 1:length(species_list)) {
+    sp <- species_list[i]
+    
+    # Extract presence/absence data for this species
+    # Skip if the species column doesn't exist
+    if (!sp %in% names(species_data)) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Get cells where this species is present
+    sp_present <- !is.na(species_data[[sp]]) & species_data[[sp]] > 0
+    sp_cells <- species_data[sp_present, ]
+    
+    # Count total number of cells in species range
+    total_cells <- sum(sp_present)
+    
+    # If species has no range cells, skip
+    if (total_cells == 0) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Count cells that overlap with priority areas
+    overlap_cells <- sum(sp_cells$is_priority)
+    
+    # Calculate overlap percentage
+    overlap_percentage <- (overlap_cells / total_cells) * 100
+    
+    # Store results
+    results$total_range_points[i] <- total_cells
+    results$overlap_points[i] <- overlap_cells
+    results$overlap_percentage[i] <- overlap_percentage
+    
+    # Print progress every 50 species
+    if (i %% 50 == 0 || i == length(species_list)) {
+      cat("Processed", i, "of", length(species_list), "species\n")
+    }
+  }
+  
+  return(results)
+}
+
+# Process all RDS files using the grid cell comparison approach
+all_results <- list()
+
+for (i in 1:length(rds_files)) {
+  file <- rds_files[i]
+  tryCatch({
+    # Use continental_puvsp_wide instead of filtering puvsp_marine
+    result <- calculate_grid_overlap(file, continental_puvsp_wide, species_names)
+    all_results[[i]] <- result
+  }, error = function(e) {
+    cat("Error processing file", basename(file), ":", e$message, "\n")
+    
+    # Try to load and print info about the file for debugging
+    tryCatch({
+      test_df <- readRDS(file)
+      cat("File structure:\n")
+      print(head(test_df))
+      cat("Priority value counts:\n")
+      print(table(test_df$Priority))
+    }, error = function(err) {
+      cat("Could not load file for debugging:", err$message, "\n")
+    })
+  })
+}
+
+# Continue with analysis if we have results
+if (length(all_results) > 0) {
+  # Combine all results
+  combined_results <- bind_rows(all_results)
+  
+  # Calculate summary statistics by species
+  summary_stats <- combined_results %>%
+    group_by(species) %>%
+    summarize(
+      scenario = first(scenario),
+      mean_overlap_percentage = mean(overlap_percentage, na.rm = TRUE),
+      sd_overlap_percentage = sd(overlap_percentage, na.rm = TRUE),
+      min_overlap_percentage = min(overlap_percentage, na.rm = TRUE),
+      max_overlap_percentage = max(overlap_percentage, na.rm = TRUE),
+      n_samples = sum(!is.na(overlap_percentage)),
+      mean_total_range = mean(total_range_points, na.rm = TRUE)
+    ) %>%
+    arrange(desc(mean_overlap_percentage))
+  
+  # Save the detailed results with scenario name
+  write_csv(combined_results, here::here("Outputs", paste0(scenario, "_species_overlap_by_seed.csv")))
+  
+  # Save the summary statistics with scenario name
+  write_csv(summary_stats, here::here("Outputs", paste0(scenario, "_species_overlap_summary.csv")))
+  
+  # Create visualization of the results with scenario in title
+  # Filter to species with sufficient range size for better visualization
+  plot_data <- summary_stats %>% 
+    filter(mean_total_range > 10) %>%  # Only show species with at least 10 grid cells
+    head(30)  # Top 30 species by overlap percentage
+  
+  ggplot(plot_data, aes(x = reorder(species, -mean_overlap_percentage), y = mean_overlap_percentage)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(aes(ymin = mean_overlap_percentage - sd_overlap_percentage, 
+                      ymax = mean_overlap_percentage + sd_overlap_percentage), width = 0.2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(title = paste("Average Percentage of Species Range Overlapping with Priority Areas -", scenario),
+         subtitle = "Top 30 species with range size > 10 cells (Continental waters only)",
+         x = "Species",
+         y = "Overlap Percentage (mean ± SD)")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_species_overlap_plot.png")), width = 12, height = 8)
+  
+  # Print overall average overlap percentage
+  overall_mean <- mean(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  overall_sd <- sd(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  
+  cat("\nOverall average overlap percentage across all species for", scenario, ": ", 
+      round(overall_mean, 2), "% (SD = ", round(overall_sd, 2), "%)\n", sep = "")
+  
+  # Also save the overall statistics to a file
+  overall_stats <- data.frame(
+    scenario = scenario,
+    mean_overlap_across_species = overall_mean,
+    sd_overlap_across_species = overall_sd,
+    n_species = nrow(summary_stats),
+    n_replicates = length(all_results)
+  )
+  
+  write_csv(overall_stats, here::here("Outputs", paste0(scenario, "_overall_stats.csv")))
+  
+  # Additional visualization showing distribution of overlap percentages
+  ggplot(summary_stats, aes(x = mean_overlap_percentage)) +
+    geom_histogram(bins = 20, fill = "steelblue", color = "black") +
+    theme_minimal() +
+    labs(title = paste("Distribution of Species Range Overlap with Priority Areas -", scenario),
+         subtitle = "Continental waters only (excluding high seas)",
+         x = "Mean Overlap Percentage",
+         y = "Number of Species")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_overlap_distribution.png")), width = 8, height = 6)
+  
+  # Create a verification map of a sample of cells to confirm they're continental
+  set.seed(123)
+  sample_cells <- continental_puvsp_wide[sample(nrow(continental_puvsp_wide), min(5000, nrow(continental_puvsp_wide))), ]
+  
+  # Get world map for background
+  library(maps)
+  world_map <- map_data("world")
+  
+  # Create verification map
+  ggplot() +
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
+                 fill = "lightgray", color = "darkgray", size = 0.2) +
+    geom_point(data = sample_cells, aes(x = lon, y = lat), 
+               color = "blue", size = 0.5, alpha = 0.3) +
+    coord_fixed(1.3) +
+    theme_minimal() +
+    labs(title = "Continental Waters Grid Cells (FUSE Analysis)",
+         subtitle = paste0("Sample of ", nrow(sample_cells), " cells from continental_puvsp_wide"),
+         x = "Longitude", y = "Latitude") +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_continental_cells_map.png")), width = 12, height = 8)
+  
+} else {
+  cat("No results were successfully processed. Check the errors above.\n")
+}
+```
+
+### EDGE2 continental 0.1
+
+```{r}
+# Load required libraries
+library(here)
+library(sp)
+library(raster)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+
+# Set the scenario name for file naming
+scenario <- "EDGE2_continental_01"
+
+# Load the already filtered continental data
+continental_puvsp_harmonised <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_puvsp_harmonised.csv"))
+continental_pu_coords <- read.csv(here::here("Cluster_files_0425", "Continental 10%", "continental_pu_coords.csv"))
+
+# Rename coordinate columns to match expected format
+names(continental_pu_coords)[c(2,3)] <- c("lon", "lat")
+
+# Merge and create wide format dataset
+continental_puvsp <- merge(continental_puvsp_harmonised, continental_pu_coords, by = "id")
+
+# Convert to wide format
+continental_puvsp_wide <- continental_puvsp %>%
+  select(id, lon, lat, species_name, amount) %>%
+  pivot_wider(
+    id_cols = c(id, lon, lat),
+    names_from = species_name,
+    values_from = amount,
+    values_fill = 0
+  )
+
+# Report on the continental dataset
+cat("Number of cells in continental waters:", nrow(continental_puvsp_wide), "\n")
+cat("Number of species:", ncol(continental_puvsp_wide) - 3, "\n")  # Subtract id, lon, lat columns
+
+# Create a cell key for matching with priority areas
+continental_puvsp_wide$cell_key <- paste(continental_puvsp_wide$lon, continental_puvsp_wide$lat, sep = "_")
+
+# Create a dataframe of species names
+species_names <- names(continental_puvsp_wide)[4:(ncol(continental_puvsp_wide)-1)]  # Excluding id, lon, lat, cell_key
+cat("Found", length(species_names), "species in the dataset\n")
+
+# List all RDS files in the output directory
+rds_files <- list.files(here::here("Outputs", "EDGE2_rds_individual"), 
+                        pattern = "EDGE2_results_continental_binary_budget0.1_seed\\d+\\.rds$",
+                        full.names = TRUE)
+
+cat("Found", length(rds_files), "RDS files to process for", scenario, "\n")
+
+# Function to calculate overlap using direct grid cell comparison
+calculate_grid_overlap <- function(priority_file, species_data, species_list) {
+  # Read the RDS file
+  cat("Processing:", basename(priority_file), "\n")
+  priority_df <- readRDS(priority_file)
+  
+  # Priority coordinates
+  x_col <- "Longitude"
+  y_col <- "Latitude"
+  
+  # Print information about the priority values
+  cat("Priority values summary:\n")
+  print(table(priority_df$Priority))
+  
+  # Extract seed number from filename
+  seed <- gsub(".*seed(\\d+)\\.rds$", "\\1", priority_file)
+  
+  # Check if there are any positive priority values
+  if (sum(priority_df$Priority > 0) == 0) {
+    cat("WARNING: No positive priority values found in this file!\n")
+    # Return an empty result with the correct structure
+    empty_results <- data.frame(
+      species = species_list,
+      seed = seed,
+      scenario = scenario,
+      total_range_points = NA,
+      overlap_points = 0,
+      overlap_percentage = 0,
+      stringsAsFactors = FALSE
+    )
+    return(empty_results)
+  }
+  
+  # Keep only cells with positive priority
+  priority_cells <- priority_df[priority_df$Priority > 0, c(x_col, y_col)]
+  cat("Number of priority cells:", nrow(priority_cells), "\n")
+  
+  # Initialize results dataframe
+  results <- data.frame(
+    species = species_list,
+    seed = seed,
+    scenario = scenario,
+    total_range_points = NA,
+    overlap_points = NA,
+    overlap_percentage = NA,
+    stringsAsFactors = FALSE
+  )
+  
+  # Round coordinates to ensure exact matches
+  priority_cells$rounded_lon <- round(priority_cells[[x_col]] * 2) / 2
+  priority_cells$rounded_lat <- round(priority_cells[[y_col]] * 2) / 2
+  
+  # Create a lookup table for faster matching
+  priority_lookup <- paste(priority_cells$rounded_lon, priority_cells$rounded_lat, sep = "_")
+  
+  # Mark which cells are priority areas
+  species_data$is_priority <- species_data$cell_key %in% priority_lookup
+  
+  # For each species, calculate overlap
+  for (i in 1:length(species_list)) {
+    sp <- species_list[i]
+    
+    # Extract presence/absence data for this species
+    # Skip if the species column doesn't exist
+    if (!sp %in% names(species_data)) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Get cells where this species is present
+    sp_present <- !is.na(species_data[[sp]]) & species_data[[sp]] > 0
+    sp_cells <- species_data[sp_present, ]
+    
+    # Count total number of cells in species range
+    total_cells <- sum(sp_present)
+    
+    # If species has no range cells, skip
+    if (total_cells == 0) {
+      results$total_range_points[i] <- 0
+      results$overlap_points[i] <- 0
+      results$overlap_percentage[i] <- 0
+      next
+    }
+    
+    # Count cells that overlap with priority areas
+    overlap_cells <- sum(sp_cells$is_priority)
+    
+    # Calculate overlap percentage
+    overlap_percentage <- (overlap_cells / total_cells) * 100
+    
+    # Store results
+    results$total_range_points[i] <- total_cells
+    results$overlap_points[i] <- overlap_cells
+    results$overlap_percentage[i] <- overlap_percentage
+    
+    # Print progress every 50 species
+    if (i %% 50 == 0 || i == length(species_list)) {
+      cat("Processed", i, "of", length(species_list), "species\n")
+    }
+  }
+  
+  return(results)
+}
+
+# Process all RDS files using the grid cell comparison approach
+all_results <- list()
+
+for (i in 1:length(rds_files)) {
+  file <- rds_files[i]
+  tryCatch({
+    # Use continental_puvsp_wide instead of puvsp_marine
+    result <- calculate_grid_overlap(file, continental_puvsp_wide, species_names)
+    all_results[[i]] <- result
+  }, error = function(e) {
+    cat("Error processing file", basename(file), ":", e$message, "\n")
+    
+    # Try to load and print info about the file for debugging
+    tryCatch({
+      test_df <- readRDS(file)
+      cat("File structure:\n")
+      print(head(test_df))
+      cat("Priority value counts:\n")
+      print(table(test_df$Priority))
+    }, error = function(err) {
+      cat("Could not load file for debugging:", err$message, "\n")
+    })
+  })
+}
+
+# Continue with analysis if we have results
+if (length(all_results) > 0) {
+  # Combine all results
+  combined_results <- bind_rows(all_results)
+  
+  # Calculate summary statistics by species
+  summary_stats <- combined_results %>%
+    group_by(species) %>%
+    summarize(
+      scenario = first(scenario),
+      mean_overlap_percentage = mean(overlap_percentage, na.rm = TRUE),
+      sd_overlap_percentage = sd(overlap_percentage, na.rm = TRUE),
+      min_overlap_percentage = min(overlap_percentage, na.rm = TRUE),
+      max_overlap_percentage = max(overlap_percentage, na.rm = TRUE),
+      n_samples = sum(!is.na(overlap_percentage)),
+      mean_total_range = mean(total_range_points, na.rm = TRUE)
+    ) %>%
+    arrange(desc(mean_overlap_percentage))
+  
+  # Save the detailed results with scenario name
+  write_csv(combined_results, here::here("Outputs", paste0(scenario, "_species_overlap_by_seed.csv")))
+  
+  # Save the summary statistics with scenario name
+  write_csv(summary_stats, here::here("Outputs", paste0(scenario, "_species_overlap_summary.csv")))
+  
+  # Create visualization of the results with scenario in title
+  # Filter to species with sufficient range size for better visualization
+  plot_data <- summary_stats %>% 
+    filter(mean_total_range > 10) %>%  # Only show species with at least 10 grid cells
+    head(30)  # Top 30 species by overlap percentage
+  
+  ggplot(plot_data, aes(x = reorder(species, -mean_overlap_percentage), y = mean_overlap_percentage)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(aes(ymin = mean_overlap_percentage - sd_overlap_percentage, 
+                      ymax = mean_overlap_percentage + sd_overlap_percentage), width = 0.2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(title = paste("Average Percentage of Species Range Overlapping with Priority Areas -", scenario),
+         subtitle = "Top 30 species with range size > 10 cells (Continental waters only)",
+         x = "Species",
+         y = "Overlap Percentage (mean ± SD)")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_species_overlap_plot.png")), width = 12, height = 8)
+  
+  # Print overall average overlap percentage
+  overall_mean <- mean(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  overall_sd <- sd(summary_stats$mean_overlap_percentage, na.rm = TRUE)
+  
+  cat("\nOverall average overlap percentage across all species for", scenario, ": ", 
+      round(overall_mean, 2), "% (SD = ", round(overall_sd, 2), "%)\n", sep = "")
+  
+  # Also save the overall statistics to a file
+  overall_stats <- data.frame(
+    scenario = scenario,
+    mean_overlap_across_species = overall_mean,
+    sd_overlap_across_species = overall_sd,
+    n_species = nrow(summary_stats),
+    n_replicates = length(all_results)
+  )
+  
+  write_csv(overall_stats, here::here("Outputs", paste0(scenario, "_overall_stats.csv")))
+  
+  # Additional visualization showing distribution of overlap percentages
+  ggplot(summary_stats, aes(x = mean_overlap_percentage)) +
+    geom_histogram(bins = 20, fill = "steelblue", color = "black") +
+    theme_minimal() +
+    labs(title = paste("Distribution of Species Range Overlap with Priority Areas -", scenario),
+         subtitle = "Continental waters only (excluding high seas)",
+         x = "Mean Overlap Percentage",
+         y = "Number of Species")
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_overlap_distribution.png")), width = 8, height = 6)
+  
+  # Create a verification map of a sample of cells to confirm they're continental
+  set.seed(123)
+  sample_cells <- continental_puvsp_wide[sample(nrow(continental_puvsp_wide), min(5000, nrow(continental_puvsp_wide))), ]
+  
+  # Get world map for background
+  library(maps)
+  world_map <- map_data("world")
+  
+  # Create verification map
+  ggplot() +
+    geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
+                 fill = "lightgray", color = "darkgray", size = 0.2) +
+    geom_point(data = sample_cells, aes(x = lon, y = lat), 
+               color = "blue", size = 0.5, alpha = 0.3) +
+    coord_fixed(1.3) +
+    theme_minimal() +
+    labs(title = "Continental Waters Grid Cells (EDGE2 Analysis)",
+         subtitle = paste0("Sample of ", nrow(sample_cells), " cells from continental_puvsp_wide"),
+         x = "Longitude", y = "Latitude") +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())
+  
+  ggsave(here::here("Outputs", paste0(scenario, "_continental_cells_map.png")), width = 12, height = 8)
+  
+} else {
+  cat("No results were successfully processed. Check the errors above.\n")
+}
 ```
