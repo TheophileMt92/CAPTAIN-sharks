@@ -2047,7 +2047,7 @@ ggsave(here::here("priority_maps_grid.png"),
 
 ## FUSE : species level priorities 
 
-### Budget: 0.3
+### Budget: 0.3 : with my calculations
 
 ```{r}
 # Protection fraction summary
@@ -2352,7 +2352,102 @@ dev.off()
 saveRDS(combined_protection_FUSE_03, file = here::here("Data", "combined_protection_FUSE_03.rds"))
 ```
 
-### Budget: 0.1
+### Budget: 0.3 : with Python calculations
+
+```{r}
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Protection fraction summary
+# Read the data
+prot_frac_comparison <- readRDS(here::here("Data","protect_fraction_comparison_FUSE_03_continental.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
+
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
+
+# Create a mapping between species and their FUSE values
+species_FUSE_map <- data.frame(
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
+)
+
+# Filter the mapping to only include species in your data
+filtered_species_FUSE <- species_FUSE_map[species_FUSE_map$Species %in% Species_in_data, ]
+
+# Create a mapping between species_id and species name
+species_id_to_name <- sp_in_data %>%
+  select(sp, species_name) %>%
+  rename(Species_ID = sp) %>%
+  distinct()
+
+# Prepare the protection fraction data - using the newly calculated method
+prot_frac <- prot_frac_comparison %>%
+  rename(
+    Species_ID = Species_ID,
+    Mean_Protect_Fraction = Mean_Calculated_Protect_Fraction,
+    Std_Protect_Fraction = Std_Calculated_Protect_Fraction
+  ) %>%
+  select(Species_ID, Mean_Protect_Fraction, Std_Protect_Fraction)
+
+# Join with species names
+prot_frac <- prot_frac %>%
+  left_join(species_id_to_name)
+
+# Add FUSE values
+prot_frac <- prot_frac %>%
+  left_join(filtered_species_FUSE, by = c("species_name" = "Species"))
+
+# Create histogram for Mean_Protect_Fraction
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Mean Protect Fraction",
+       x = "Mean Protect Fraction",
+       y = "Count")
+
+# Create histogram for FUSE
+hist_fuse <- ggplot(prot_frac, aes(x = FUSE)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of FUSE Scores",
+       x = "FUSE Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(prot_frac, aes(x = FUSE, y = Mean_Protect_Fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: FUSE vs Mean Protect Fraction",
+       x = "FUSE Score",
+       y = "Mean Protect Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_fuse, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the plot
+ggsave(here::here("Outputs", "FUSE_03_continental_protection_plot_python calculations.png"), 
+       grid_plot, width = 10, height = 8)
+```
+
+### Budget: 0.1 : with my calculations
 
 ```{r}
 # Load required libraries
@@ -2682,6 +2777,118 @@ grid_plot <- grid.arrange(
 # Save the combined protection data
 saveRDS(combined_protection_FUSE_01, file = here::here("Data", "combined_protection_FUSE_01.rds"))
 ```
+### Budget: 0.1 : with python calculations
+
+```{r}
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Read the newly calculated protection fraction data
+protection_fractions <- readRDS(here::here("Data","protect_fraction_comparison_FUSE_01_continental.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract all species names and FUSE values from sp
+all_species <- sp$FUSE$info$Species
+all_FUSE <- sp$FUSE$info$FUSE
+
+# Create a mapping between species and their FUSE values
+species_FUSE_map <- data.frame(
+  Species = all_species,
+  FUSE = as.numeric(all_FUSE)
+)
+
+# Prepare protection fractions data
+# First, we need to map species IDs to species names
+# Assuming you have a mapping somewhere in sp_in_data
+species_id_to_name <- sp_in_data %>%
+  select(sp, species_name) %>%
+  rename(species_id = sp) %>%
+  distinct()
+
+# Rename columns for clarity and use the calculated protection fraction
+protection_fractions <- protection_fractions %>%
+  rename(species_id = Species_ID, 
+         protect_fraction = Mean_Calculated_Protect_Fraction) # Using the new calculated method
+
+# Join with species names
+protection_with_names <- protection_fractions %>%
+  left_join(species_id_to_name, by = "species_id")
+
+# Create a clean dataframe like overlap_summary_filtered
+protection_summary_filtered <- protection_with_names %>%
+  rename(Species = species_name) %>%
+  filter(Species %in% all_species)
+
+# Get the count of how many species from all_species are in our protection data
+species_in_protection <- sum(all_species %in% protection_summary_filtered$Species)
+cat("Species from the conservation metrics found in protection data:", species_in_protection, 
+    "out of", length(all_species), "\n")
+
+# Merge with FUSE values
+protection_with_FUSE <- merge(protection_summary_filtered, species_FUSE_map, by = "Species", all.x = TRUE)
+
+# Filter out rows with NA FUSE values
+protection_with_FUSE <- protection_with_FUSE %>% filter(!is.na(FUSE))
+
+# Count species that reach the 10% protection target
+# Only from the species in all_species
+species_meeting_target <- protection_summary_filtered %>%
+  filter(protect_fraction > 0.1) # 10% as a fraction is 0.1
+
+# Get the count and percentage
+count_meeting_target <- nrow(species_meeting_target)
+total_species <- length(all_species)  # Use the total from all_species
+percentage_meeting_target <- (count_meeting_target / total_species) * 100
+
+cat("\nSpecies meeting 10% protection target:\n")
+cat("Count:", count_meeting_target, "out of", total_species, "species\n")
+cat("Percentage:", round(percentage_meeting_target, 2), "%\n")
+
+# Create histogram for protection fraction
+hist_protection <- ggplot(protection_with_FUSE, aes(x = protect_fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Species Protection Fraction\n(Continental)",
+       x = "Protection Fraction",
+       y = "Count")
+
+# Create histogram for FUSE
+hist_fuse <- ggplot(protection_with_FUSE, aes(x = FUSE)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of FUSE Scores\n(Continental)",
+       x = "FUSE Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(protection_with_FUSE, aes(x = FUSE, y = protect_fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: FUSE vs Species Protection Fraction (Continental)",
+       x = "FUSE Score",
+       y = "Protection Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protection, hist_fuse, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the plot
+ggsave(here::here("Outputs", "FUSE_continental_01_protection_correlation_plot_python calculations.png"), 
+       grid_plot, width = 10, height = 8)
+
+```
 
 ### Verify Mean Protect Fraction 
 
@@ -2695,7 +2902,7 @@ prot_frac <- prot_frac %>% arrange(desc(Mean_Protect_Fraction))
 
 ## EDGE2 : species level priorities 
 
-### Budget: 0.3
+### Budget: 0.3 : with my calculations
 
 ```{r}
 # Protection fraction summary
@@ -2991,7 +3198,103 @@ grid_plot <- grid.arrange(
 saveRDS(combined_protection_EDGE2_03, file = here::here("Data", "combined_protection_EDGE2_03.rds"))
 ```
 
-### Budget: 0.1
+
+### Budget 0.3 : with python calculations 
+
+```{r}
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Protection fraction summary
+# Read the data - using the comparison data file with both methods
+prot_frac_comparison <- readRDS(here::here("Data","protect_fraction_comparison_EDGE2_03_continental.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+all_EDGE2 <- sp$EDGE2$info$EDGE2
+
+# Get unique species in your data
+Species_in_data <- sort(unique(sp_in_data$species_name))
+
+# Create a mapping between species and their EDGE2 values
+species_EDGE2_map <- data.frame(
+  Species = all_species,
+  EDGE2 = as.numeric(all_EDGE2)
+)
+
+# Filter the mapping to only include species in your data
+filtered_species_EDGE2 <- species_EDGE2_map[species_EDGE2_map$Species %in% Species_in_data, ]
+
+# Create a mapping between species_id and species name
+species_id_to_name <- sp_in_data %>%
+  select(id, species_name) %>%
+  rename(Species_ID = id) %>%
+  distinct()
+
+# Prepare the protection fraction data - using the newly calculated method
+prot_frac <- prot_frac_comparison %>%
+  rename(
+    Species_ID = Species_ID,
+    Mean_Protect_Fraction = Mean_Calculated_Protect_Fraction,
+    Std_Protect_Fraction = Std_Calculated_Protect_Fraction
+  ) %>%
+  select(Species_ID, Mean_Protect_Fraction, Std_Protect_Fraction)
+
+# Join with species names
+prot_frac <- prot_frac %>%
+  left_join(species_id_to_name)
+
+# Add EDGE2 values
+prot_frac <- prot_frac %>%
+  left_join(filtered_species_EDGE2, by = c("species_name" = "Species"))
+
+# Create histogram for Mean_Protect_Fraction
+hist_protect <- ggplot(prot_frac, aes(x = Mean_Protect_Fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Mean Protect Fraction\n(Continental)",
+       x = "Mean Protect Fraction",
+       y = "Count")
+
+# Create histogram for EDGE2
+hist_EDGE2 <- ggplot(prot_frac, aes(x = EDGE2)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of EDGE2 Scores\n(Continental)",
+       x = "EDGE2 Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(prot_frac, aes(x = EDGE2, y = Mean_Protect_Fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: EDGE2 vs Mean Protect Fraction (Continental)",
+       x = "EDGE2 Score",
+       y = "Mean Protect Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_EDGE2, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the plot
+ggsave(here::here("Outputs", "EDGE2_03_continental_protection_plot.png"), 
+       grid_plot, width = 10, height = 8, dpi = 300)
+```
+
+### Budget: 0.1 : with my calculations
 
 ```{r}
 # Protection fraction summary
@@ -3318,6 +3621,118 @@ grid_plot <- grid.arrange(
 # Save the combined protection data
 saveRDS(combined_protection_EDGE2_01, file = here::here("Data", "combined_protection_EDGE2_01.rds"))
 ```
+
+### Budget: 0.1 : with Python calculations
+
+```{r}
+# Load required libraries
+library(here)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(gridExtra)
+
+# Protection fraction summary
+# Read the data - using the comparison data file with both methods
+prot_frac_comparison <- readRDS(here::here("Data","protect_fraction_comparison_EDGE2_03_continental.rds"))
+sp <- fromJSON(here("Data", "shark_conservation_metrics_no_freshwater.json"))
+sp_in_data <- read_csv(here("Data", "continental_puvsp_harmonised.csv"))
+
+# Extract all species names and EDGE2 values from sp
+all_species <- sp$EDGE2$info$Species
+
+# Create EDGE2 info dataframe
+EDGE2_info <- data.frame(
+  Species = sp$EDGE2$info$Species,
+  EDGE2 = as.numeric(sp$EDGE2$info$EDGE2)
+)
+
+# Prepare the species ID to name mapping
+species_id_to_name <- sp_in_data %>%
+  select(sp, species_name) %>%
+  rename(species_id = sp, Species = species_name) %>%
+  distinct()
+
+# Prepare the protection fraction data - using the newly calculated method
+prot_frac <- prot_frac_comparison %>%
+  rename(
+    species_id = Species_ID,
+    protect_fraction = Mean_Calculated_Protect_Fraction
+  ) %>%
+  select(species_id, protect_fraction)
+
+# Join with species names
+protection_with_names <- prot_frac %>%
+  left_join(species_id_to_name, by = "species_id")
+
+# Create a clean dataframe similar to your second example
+protection_summary_filtered <- protection_with_names %>%
+  filter(Species %in% all_species)
+
+# Get the count of how many species from all_species are in our protection data
+species_in_protection <- sum(all_species %in% protection_summary_filtered$Species)
+cat("Species from the conservation metrics found in protection data:", species_in_protection, 
+    "out of", length(all_species), "\n")
+
+# Merge with EDGE2 values
+protection_with_EDGE2 <- merge(protection_summary_filtered, EDGE2_info, by = "Species", all.x = TRUE)
+
+# Filter out rows with NA EDGE2 values
+protection_with_EDGE2 <- protection_with_EDGE2 %>% filter(!is.na(EDGE2))
+
+# Count species that reach the 10% protection target
+species_meeting_target <- protection_summary_filtered %>%
+  filter(protect_fraction > 0.1) # 10% as a fraction is 0.1
+
+# Get the count and percentage
+count_meeting_target <- nrow(species_meeting_target)
+total_species <- length(all_species)  # Use the total from all_species
+percentage_meeting_target <- (count_meeting_target / total_species) * 100
+
+cat("\nSpecies meeting 10% protection target:\n")
+cat("Count:", count_meeting_target, "out of", total_species, "species\n")
+cat("Percentage:", round(percentage_meeting_target, 2), "%\n")
+
+# Create histogram for protection fraction
+hist_protect <- ggplot(protection_with_EDGE2, aes(x = protect_fraction)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  scale_x_continuous(limits=c(0,1)) + 
+  theme_minimal() +
+  labs(title = "Histogram of Mean Protect Fraction\n(Continental)",
+       x = "Mean Protect Fraction",
+       y = "Count")
+
+# Create histogram for EDGE2
+hist_EDGE2 <- ggplot(protection_with_EDGE2, aes(x = EDGE2)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of EDGE2 Scores\n(Continental)",
+       x = "EDGE2 Score",
+       y = "Count")
+
+# Create scatterplot
+scatter_plot <- ggplot(protection_with_EDGE2, aes(x = EDGE2, y = protect_fraction)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  theme_minimal() +
+  scale_y_continuous(limits=c(0,1)) + 
+  labs(title = "Scatterplot: EDGE2 vs Mean Protect Fraction (Continental)",
+       x = "EDGE2 Score",
+       y = "Mean Protect Fraction")
+
+# Arrange plots in a grid
+grid_plot <- grid.arrange(
+  hist_protect, hist_EDGE2, scatter_plot,
+  layout_matrix = rbind(c(1,2), c(3,3)),
+  widths = c(1, 1),
+  heights = c(1, 1)
+)
+
+# Save the plot
+ggsave(here::here("Outputs", "EDGE2_03_continental_protection_plot.png"), 
+       grid_plot, width = 10, height = 8, dpi = 300)
+```
+
 
 ### Verify Mean Protect Fraction 
 
