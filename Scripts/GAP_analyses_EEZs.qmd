@@ -2577,7 +2577,7 @@ This complex pattern suggests that:
 
 This highlights the importance of using multiple analytical approaches to fully understand conservation patterns and avoid oversimplified conclusions about protection effectiveness.
 
-### Ridgeline chart : six charts 
+### Ridgeline chart : no-take ms chart
 
 ```{r}
 library(tidyverse)
@@ -2628,7 +2628,7 @@ iucn_colors <- c(
 
 iucn_order <- c("LC", "NT", "VU", "EN", "CR")
 
-# Modify the plot - now without faceting since we only have one scenario
+# Modified plot with mean dots and SD whiskers bounded at 0
 rdplot = ggplot(notake_mpa_iucn, 
        aes(x = factor(IUCN_status, levels = iucn_order), 
            y = protection)) +
@@ -2639,14 +2639,23 @@ rdplot = ggplot(notake_mpa_iucn,
               size = 0.4, 
               alpha = 0.5, 
               color = "darkgray") +
-  geom_boxplot(width = 0.1, 
-               fill = "white", 
-               color = "black", 
-               outlier.shape = NA, 
-               alpha = 0.8) +
+  # Replace boxplot with stat_summary for mean and SD
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+                  mean_val <- mean(x, na.rm = TRUE)
+                  sd_val <- sd(x, na.rm = TRUE)
+                  return(data.frame(y = mean_val, 
+                                   ymin = max(0, mean_val - sd_val), # Ensure lower bound is not below 0
+                                   ymax = mean_val + sd_val))
+                },
+               geom = "errorbar", 
+               width = 0.1, 
+               color = "black") +
   labs(x = "IUCN Red List threat status", 
-       y = "Range protected (%)",
-       title = "Current no-take MPAs overlaps") +
+       y = "(%) Range within no-take MPAs") +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -2656,10 +2665,9 @@ rdplot = ggplot(notake_mpa_iucn,
   scale_x_discrete(limits = iucn_order) +
   scale_fill_manual(values = iucn_colors) +
   scale_color_manual(values = iucn_colors) +
-  scale_y_continuous(limits = c(0, 65),
-                    breaks = seq(0, 65, 20))
+  scale_y_sqrt(limits = c(0, 80),
+                    breaks = seq(0, 80, 20))
 rdplot
-
 # Add white background to the plot
 rdplot_white = rdplot + 
   theme(
