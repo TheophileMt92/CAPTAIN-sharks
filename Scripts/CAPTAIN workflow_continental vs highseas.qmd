@@ -557,6 +557,404 @@ ggsave(
   bg = "white"
 )
 ```
+## PCA of FUSE and EDGE2 priorities 
+
+### Continental 10% 
+
+```{r}
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(smoothr)
+library(ade4)  # Load ade4 for dudi.pca
+library(factoextra)  # For PCA visualization
+
+# Read only the continental RDS files
+continental_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+continental_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Extract coordinates and priority values to prepare for PCA
+continental_combined <- continental_data_FUSE_01 %>%
+  dplyr::select(Longitude, Latitude, FUSE_Priority = Priority) %>%
+  left_join(
+    continental_data_EDGE2_01 %>%
+      dplyr::select(Longitude, Latitude, EDGE2_Priority = Priority),
+    by = c("Longitude", "Latitude")
+  )
+
+# Examine correlation between the two priority values
+cor_continental <- cor(continental_combined$FUSE_Priority, continental_combined$EDGE2_Priority, 
+                     use = "complete.obs")
+print(paste("Correlation between FUSE and EDGE2 in continental waters:", cor_continental))
+
+# Prepare data for ade4 PCA
+continental_pca_data <- continental_combined %>%
+  dplyr::select(FUSE_Priority, EDGE2_Priority)
+
+# Remove rows with NA values
+continental_pca_data <- na.omit(continental_pca_data)
+
+# Run PCA using dudi.pca from ade4
+# scannf=FALSE to avoid interactive screeplot, nf=2 to retain 2 axes
+continental_pca <- dudi.pca(continental_pca_data, 
+                           center = TRUE, 
+                           scale = TRUE, 
+                           scannf = FALSE, 
+                           nf = 2)
+
+# Print PCA summary information
+print("Eigenvalues and percentage of variance:")
+print(continental_pca$eig)
+print(paste("Percentage of variance explained by first axis:", 
+            round(continental_pca$eig[1] / sum(continental_pca$eig) * 100, 2), "%"))
+print(paste("Percentage of variance explained by second axis:", 
+            round(continental_pca$eig[2] / sum(continental_pca$eig) * 100, 2), "%"))
+
+# Check the correlations of variables with axes
+print("Variable correlations with axes:")
+print(continental_pca$co)
+
+# Extract PC scores for all continental data points
+# First, create a data frame with complete cases only for prediction
+continental_complete <- continental_combined %>%
+  filter(!is.na(FUSE_Priority) & !is.na(EDGE2_Priority)) %>%
+  mutate(row_id = row_number())
+
+# Get PC scores for complete cases
+pc_scores <- as.data.frame(continental_pca$li)
+pc_scores$row_id <- row_number(pc_scores)
+
+# Join scores back to the original data
+continental_with_scores <- left_join(continental_complete, 
+                                     pc_scores %>% dplyr::select(row_id, Axis1 = Axis1, Axis2 = Axis2),
+                                     by = "row_id")
+
+# Add scores back to the full dataset (including NAs)
+continental_combined <- left_join(
+  continental_combined,
+  continental_with_scores %>% dplyr::select(Longitude, Latitude, Axis1, Axis2),
+  by = c("Longitude", "Latitude")
+)
+
+# Reverse Axis1 if both variables are negatively correlated with it
+# Check the sign of the correlations
+axis1_correlations <- continental_pca$co[, 1]
+if (all(axis1_correlations < 0)) {
+  print("Both variables are negatively correlated with Axis1. Reversing Axis1 for mapping.")
+  # Multiply by -1 to reverse the axis
+  continental_combined$Axis1 <- -1 * continental_combined$Axis1
+}
+
+# Scale reversed Axis1 to be between 0 and 1 for visualization
+continental_combined$Axis1_scaled <- scales::rescale(continental_combined$Axis1, to = c(0, 1))
+
+# Transform continental data to sf object
+continental_sf_pca <- st_as_sf(continental_combined, 
+                            coords = c("Longitude", "Latitude"), 
+                            crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create PCA-based map
+pca_plot <- ggplot() +
+  geom_sf(data = continental_sf_pca, aes(color = Axis1_scaled), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Combined Priority (PC1)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(x = NULL, y = NULL) +
+  my_theme
+
+# Create a scatterplot of FUSE vs EDGE2 to visualize their relationship
+priority_scatter <- ggplot(continental_combined, aes(x = FUSE_Priority, y = EDGE2_Priority)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "Relationship between FUSE and EDGE2 Priority Values",
+       x = "FUSE Priority", 
+       y = "EDGE2 Priority") +
+  theme_minimal()
+
+# Create PCA biplot using ade4 directly
+# Extract the loadings and scores
+loadings <- as.data.frame(continental_pca$co)
+colnames(loadings) <- c("Dim1", "Dim2")
+loadings$variable <- rownames(loadings)
+
+scores <- as.data.frame(continental_pca$li)
+colnames(scores) <- c("Dim1", "Dim2")
+
+# Calculate the percentage of variance explained
+variance_explained <- round(continental_pca$eig / sum(continental_pca$eig) * 100, 2)
+
+# Create a more detailed biplot with labels
+biplot <- ggplot() +
+  # Plot a small sample of points to avoid overplotting
+  geom_point(data = scores[sample(nrow(scores), min(1000, nrow(scores))),], 
+             aes(x = Dim1, y = Dim2), 
+             alpha = 0.1, color = "gray70", size = 2) +
+  # Add arrows for variables
+  geom_segment(data = loadings, 
+               aes(x = 0, y = 0, xend = Dim1*5, yend = Dim2*5, color = variable),
+               arrow = arrow(length = unit(0.3, "cm")), 
+               size = 1) +
+  # Add variable labels
+  geom_text(data = loadings, 
+            aes(x = Dim1*5.4, y = Dim2*5.4, label = variable, color = variable),
+            size = 5, fontface = "bold") +
+  # Add axis labels with variance explained
+  labs(x = paste0("PC1 (", variance_explained[1], "%)"),
+       y = paste0("PC2 (", variance_explained[2], "%)"),
+       title = "PCA Biplot: FUSE vs EDGE2 Priority Values") +
+  # Use a clean theme
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  ) +
+  # Add coordinate limits to focus on the loadings
+  xlim(-6, 6) + ylim(-6, 6) +
+  # Add reference lines
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50", size = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", size = 0.5) +
+  # Scale the colors for variables
+  scale_color_manual(values = c("FUSE_Priority" = "red", "EDGE2_Priority" = "blue"))
+
+# Display the plots
+print(pca_plot)
+print(biplot)
+print(priority_scatter)
+
+# Save plots
+ggsave(here::here("outputs", "combined_priority_pca_map.png"), 
+       plot = pca_plot,
+       width = 10, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "pca_biplot.png"), 
+       plot = biplot,
+       width = 8, height = 8, dpi = 300)
+
+ggsave(here::here("outputs", "priority_scatter.png"), 
+       plot = priority_scatter,
+       width = 6, height = 6, dpi = 300)
+
+# Alternative visualization using ade4's s.arrow function
+pdf(here::here("outputs", "ade4_pca_biplot.pdf"), width = 8, height = 8)
+s.arrow(continental_pca$c1, boxes = FALSE, grid = FALSE)
+dev.off()
+```
+
+## Liner model of EDGE2 vs FUSE and mapped predictions
+
+### Continental 10% 
+
+```{r}
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(smoothr)
+
+# Read only the continental RDS files
+continental_data_FUSE_01 <- readRDS(here::here("Data/FUSE_full_results_continental_averaged_budget0.1_replicates10.rds"))
+continental_data_EDGE2_01 <- readRDS(here::here("Data/EDGE2_full_results_continental_averaged_budget0.1_replicates10.rds"))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Extract coordinates and priority values
+continental_combined <- continental_data_FUSE_01 %>%
+  dplyr::select(Longitude, Latitude, FUSE_Priority = Priority) %>%
+  left_join(
+    continental_data_EDGE2_01 %>%
+      dplyr::select(Longitude, Latitude, EDGE2_Priority = Priority),
+    by = c("Longitude", "Latitude")
+  )
+
+# Examine correlation between the two priority values
+cor_continental <- cor(continental_combined$FUSE_Priority, continental_combined$EDGE2_Priority, 
+                     use = "complete.obs")
+print(paste("Correlation between FUSE and EDGE2 in continental waters:", cor_continental))
+
+# Filter out NAs for the linear model
+complete_data <- continental_combined %>%
+  filter(!is.na(FUSE_Priority) & !is.na(EDGE2_Priority))
+
+# Fit linear model
+lm_model <- lm(EDGE2_Priority ~ FUSE_Priority, data = complete_data)
+print(summary(lm_model))
+
+# Create a combined priority score based on linear model
+# Use the average of the original FUSE priority and the predicted EDGE2 priority
+continental_combined <- continental_combined %>%
+  mutate(
+    # Predict EDGE2 from FUSE where EDGE2 is missing but FUSE is available
+    EDGE2_Predicted = predict(lm_model, newdata = data.frame(FUSE_Priority = FUSE_Priority)),
+    # Create a combined score - average of the two indices
+    Combined_Priority = (FUSE_Priority + coalesce(EDGE2_Priority, EDGE2_Predicted)) / 2
+  )
+
+# Scale the combined priority to 0-1 for visualization
+continental_combined$Combined_Priority_Scaled <- scales::rescale(
+  continental_combined$Combined_Priority, to = c(0, 1)
+)
+
+# Transform continental data to sf object
+continental_sf_combined <- st_as_sf(continental_combined, 
+                            coords = c("Longitude", "Latitude"), 
+                            crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Create the combined priority map
+combined_plot <- ggplot() +
+  geom_sf(data = continental_sf_combined, aes(color = Combined_Priority_Scaled), 
+          size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Combined Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(x = NULL, y = NULL) +
+  my_theme
+
+# Create individual maps for comparison
+fuse_plot <- ggplot() +
+  geom_sf(data = continental_sf_combined, aes(color = FUSE_Priority), 
+          size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.25, 1),
+    name = "FUSE Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(x = NULL, y = NULL) +
+  my_theme
+
+edge2_plot <- ggplot() +
+  geom_sf(data = continental_sf_combined, aes(color = EDGE2_Priority), 
+          size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.25, 1),
+    name = "EDGE2 Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(x = NULL, y = NULL) +
+  my_theme
+
+# Create a scatterplot of FUSE vs EDGE2 to visualize their relationship with linear model
+priority_scatter <- ggplot(continental_combined, aes(x = FUSE_Priority, y = EDGE2_Priority)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", color = "red") +
+  geom_abline(intercept = coef(lm_model)[1], slope = coef(lm_model)[2], 
+              color = "blue", linetype = "dashed") +
+  labs(title = "Relationship between FUSE and EDGE2 Priority Values",
+       subtitle = paste("Correlation =", round(cor_continental, 3)),
+       x = "FUSE Priority", 
+       y = "EDGE2 Priority") +
+  theme_minimal()
+
+# Display the plots
+print(combined_plot)
+print(fuse_plot)
+print(edge2_plot)
+print(priority_scatter)
+
+# Save plots
+ggsave(here::here("outputs", "combined_priority_map.png"), 
+       plot = combined_plot,
+       width = 10, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "fuse_priority_map.png"), 
+       plot = fuse_plot,
+       width = 10, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "edge2_priority_map.png"), 
+       plot = edge2_plot,
+       width = 10, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "priority_scatter_with_lm.png"), 
+       plot = priority_scatter,
+       width = 6, height = 6, dpi = 300)
+```
 
 ## Congruence tests 
 
