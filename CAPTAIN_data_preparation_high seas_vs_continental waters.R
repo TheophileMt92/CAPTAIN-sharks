@@ -1213,3 +1213,345 @@ cat("10% scenario IUCN metrics:\n")
 print(highseas_summaries$metrics_10_summary$iucn_GE)
 print(highseas_summaries$metrics_10_summary$iucn_P50)
 print(highseas_summaries$metrics_10_summary$iucn_P100)
+
+# Create individual .tif files ----
+library(raster)
+library(dplyr)
+library(tidyr)
+library(here)
+
+# Create directory if it doesn't exist
+tif_dir <- here::here("Data", "tif files continental")
+if (!dir.exists(tif_dir)) {
+  dir.create(tif_dir, recursive = TRUE)
+}
+
+# Load the harmonized continental data
+continental_puvsp <- read.csv(here::here("Data", "My dataframes", "continental_puvsp_harmonised.csv"))
+continental_coords <- read.csv(here::here("Data", "My dataframes", "continental_pu_coords.csv"))
+
+# Join coordinates with PUVSP data
+puvsp_with_coords <- continental_puvsp %>%
+  left_join(continental_coords, by = c("id" = "id"))
+
+# Get unique species IDs
+species_ids <- unique(continental_puvsp$sp)
+
+# Find the extent of your study area
+x_range <- range(continental_coords$Coord_x, na.rm = TRUE)
+y_range <- range(continental_coords$Coord_y, na.rm = TRUE)
+
+# Define resolution as 0.5 degrees as specified
+res <- 0.5
+
+# Create rasters for each species
+for (sp_id in species_ids) {
+  # Filter data for this species
+  sp_data <- puvsp_with_coords %>% 
+    filter(sp == sp_id)
+  
+  # Get species name from first matching record
+  sp_name <- sp_data$species_name[1]
+  
+  # Create safe filename (remove spaces, special characters)
+  safe_name <- gsub("[^a-zA-Z0-9]", "_", sp_name)
+  
+  # Skip if no data for this species
+  if (nrow(sp_data) == 0) {
+    cat("No data for species ID:", sp_id, "\n")
+    next
+  }
+  
+  # Create empty raster with the extent of our data
+  r <- raster(
+    xmn = x_range[1] - res/2,
+    xmx = x_range[2] + res/2,
+    ymn = y_range[1] - res/2,
+    ymx = y_range[2] + res/2,
+    resolution = res
+  )
+  
+  # Use rasterize to convert point data to raster
+  # The 'amount' column is used as the value (presence/probability)
+  r_filled <- rasterize(
+    x = sp_data[, c("Coord_x", "Coord_y")],
+    y = r,
+    field = sp_data$amount,
+    fun = max  # If multiple points in same cell, take maximum value
+  )
+  
+  # File name with species ID and name
+  filename <- file.path(tif_dir, paste0("sp_", sp_id, "_", safe_name, ".tif"))
+  
+  # Write to file
+  writeRaster(r_filled, filename, format = "GTiff", overwrite = TRUE)
+  
+  cat("Created raster for species", sp_id, "-", sp_name, "\n")
+}
+
+cat("Process complete. Created TIF files in:", tif_dir, "\n")
+
+# Check the tif files
+
+library(raster)
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(gridExtra)
+library(here)
+
+# Directory containing TIF files
+tif_dir <- here::here("Data", "tif files continental")
+
+# Get list of all TIF files
+tif_files <- list.files(tif_dir, pattern = "\\.tif$", full.names = TRUE)
+
+if (length(tif_files) == 0) {
+  stop("No TIF files found in the directory!")
+}
+
+# Basic information about the TIF files
+cat("Found", length(tif_files), "TIF files\n")
+cat("First few files:\n")
+for (i in 1:min(5, length(tif_files))) {
+  cat("  -", basename(tif_files[i]), "\n")
+}
+
+# Function to create a simple visualization of a raster
+plot_raster <- function(raster_file) {
+  # Extract species name from filename
+  filename <- basename(raster_file)
+  species_name <- gsub("sp_\\d+_(.+)\\.tif", "\\1", filename)
+  species_name <- gsub("_", " ", species_name)
+  
+  # Load raster
+  r <- raster(raster_file)
+  
+  # Check for empty raster
+  if (all(is.na(values(r)))) {
+    cat("WARNING: Raster is empty for", filename, "\n")
+    return(NULL)
+  }
+  
+  # Convert to dataframe for ggplot
+  r_df <- as.data.frame(r, xy = TRUE)
+  names(r_df)[3] <- "value"
+  
+  # Count non-NA cells
+  non_na_cells <- sum(!is.na(r_df$value))
+  total_cells <- nrow(r_df)
+  
+  # Create plot
+  p <- ggplot(r_df, aes(x = x, y = y)) +
+    geom_raster(aes(fill = value)) +
+    scale_fill_viridis_c(na.value = "transparent") +
+    coord_fixed() +
+    theme_minimal() +
+    labs(
+      title = species_name,
+      subtitle = paste0("Non-empty cells: ", non_na_cells, "/", total_cells),
+      x = "Longitude",
+      y = "Latitude",
+      fill = "Value"
+    )
+  
+  return(p)
+}
+
+# Sample a few TIF files to verify (adjust the number as needed)
+set.seed(123)  # For reproducibility
+sample_size <- min(9, length(tif_files))
+sample_files <- sample(tif_files, sample_size)
+
+# Create plots
+plots <- lapply(sample_files, plot_raster)
+plots <- plots[!sapply(plots, is.null)]  # Remove any NULL plots
+
+# Arrange plots in a grid
+if (length(plots) > 0) {
+  grid_arranged <- do.call(gridExtra::grid.arrange, c(plots, ncol = 3))
+  print(grid_arranged)
+} else {
+  cat("No valid plots to display!\n")
+}
+
+# More detailed verification
+verification_results <- data.frame(
+  filename = character(),
+  non_empty_cells = numeric(),
+  min_value = numeric(),
+  max_value = numeric(),
+  mean_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Check each TIF file
+for (tif_file in tif_files) {
+  r <- raster(tif_file)
+  values <- values(r)
+  values_no_na <- values[!is.na(values)]
+  
+  # Skip if all NA
+  if (length(values_no_na) == 0) {
+    verification_results <- rbind(verification_results, data.frame(
+      filename = basename(tif_file),
+      non_empty_cells = 0,
+      min_value = NA,
+      max_value = NA,
+      mean_value = NA,
+      stringsAsFactors = FALSE
+    ))
+    next
+  }
+  
+  verification_results <- rbind(verification_results, data.frame(
+    filename = basename(tif_file),
+    non_empty_cells = length(values_no_na),
+    min_value = min(values_no_na),
+    max_value = max(values_no_na),
+    mean_value = mean(values_no_na),
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Summary of verification
+cat("\n==== Verification Summary ====\n")
+cat("Total TIF files:", nrow(verification_results), "\n")
+cat("Files with content:", sum(verification_results$non_empty_cells > 0), "\n")
+cat("Empty files:", sum(verification_results$non_empty_cells == 0), "\n")
+
+# Show files with potential issues (empty or very few cells)
+problem_files <- verification_results %>%
+  filter(non_empty_cells <= 5) %>%
+  arrange(non_empty_cells)
+
+if (nrow(problem_files) > 0) {
+  cat("\nFiles with few or no data points:\n")
+  print(problem_files)
+}
+
+# Save the verification summary
+write.csv(
+  verification_results,
+  here::here("Data", "tif_verification_summary.csv"),
+  row.names = FALSE
+)
+
+cat("\nVerification complete. Summary saved to 'Data/tif_verification_summary.csv'\n")
+
+# Size of the rasters
+
+library(raster)
+library(dplyr)
+library(here)
+
+# Directory containing TIF files
+tif_dir <- here::here("Data", "tif files continental")
+
+# Get list of all TIF files
+tif_files <- list.files(tif_dir, pattern = "\\.tif$", full.names = TRUE)
+
+if (length(tif_files) == 0) {
+  stop("No TIF files found in the directory!")
+}
+
+# Function to get raster dimensions
+analyze_raster_size <- function(raster_file) {
+  r <- raster(raster_file)
+  
+  # Extract dimensions
+  dimensions <- dim(r)
+  n_rows <- dimensions[1]
+  n_cols <- dimensions[2]
+  total_cells <- ncell(r)
+  resolution <- res(r)
+  extent <- extent(r)
+  
+  # Count non-NA cells
+  values <- values(r)
+  non_na_cells <- sum(!is.na(values))
+  
+  return(data.frame(
+    filename = basename(raster_file),
+    rows = n_rows,
+    columns = n_cols,
+    total_cells = total_cells,
+    non_empty_cells = non_na_cells,
+    empty_cells = total_cells - non_na_cells,
+    percent_filled = round(100 * non_na_cells / total_cells, 2),
+    x_resolution = resolution[1],
+    y_resolution = resolution[2],
+    x_min = extent@xmin,
+    x_max = extent@xmax,
+    y_min = extent@ymin,
+    y_max = extent@ymax,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Analyze all rasters
+raster_sizes <- do.call(rbind, lapply(tif_files, analyze_raster_size))
+
+# Calculate some summary statistics
+summary_stats <- data.frame(
+  metric = c(
+    "Number of rasters", 
+    "Rows (min/mean/max)",
+    "Columns (min/mean/max)",
+    "Total cells (min/mean/max)",
+    "X resolution",
+    "Y resolution",
+    "Average % of cells filled"
+  ),
+  value = c(
+    nrow(raster_sizes),
+    paste0(min(raster_sizes$rows), "/", round(mean(raster_sizes$rows), 1), "/", max(raster_sizes$rows)),
+    paste0(min(raster_sizes$columns), "/", round(mean(raster_sizes$columns), 1), "/", max(raster_sizes$columns)),
+    paste0(min(raster_sizes$total_cells), "/", round(mean(raster_sizes$total_cells), 1), "/", max(raster_sizes$total_cells)),
+    unique(raster_sizes$x_resolution)[1],
+    unique(raster_sizes$y_resolution)[1],
+    round(mean(raster_sizes$percent_filled), 2)
+  )
+)
+
+# Print summary
+cat("\n===== Raster Size Analysis =====\n")
+print(summary_stats, row.names = FALSE)
+
+cat("\nSample of Individual Raster Analysis:\n")
+print(head(raster_sizes %>% select(filename, rows, columns, total_cells, non_empty_cells, percent_filled)), row.names = FALSE)
+
+# Verify all rasters have the same dimensions
+uniform_dimensions <- length(unique(raster_sizes$rows)) == 1 && 
+  length(unique(raster_sizes$columns)) == 1
+
+cat("\nAll rasters have the same dimensions:", uniform_dimensions, "\n")
+if (!uniform_dimensions) {
+  cat("WARNING: Rasters have different dimensions. This may cause issues for some analyses.\n")
+  
+  # Show the different dimensions
+  unique_dims <- raster_sizes %>%
+    select(rows, columns, total_cells) %>%
+    distinct() %>%
+    arrange(rows, columns)
+  
+  cat("Unique dimensions (rows x columns):\n")
+  print(unique_dims, row.names = FALSE)
+}
+
+# Verify all rasters have the same extent
+uniform_extent <- length(unique(raster_sizes$x_min)) == 1 && 
+  length(unique(raster_sizes$x_max)) == 1 &&
+  length(unique(raster_sizes$y_min)) == 1 &&
+  length(unique(raster_sizes$y_max)) == 1
+
+cat("\nAll rasters have the same extent:", uniform_extent, "\n")
+
+# Save the detailed analysis
+write.csv(
+  raster_sizes,
+  here::here("Data", "tif_size_analysis.csv"),
+  row.names = FALSE
+)
+
+cat("\nAnalysis complete. Detailed results saved to 'Data/tif_size_analysis.csv'\n")
