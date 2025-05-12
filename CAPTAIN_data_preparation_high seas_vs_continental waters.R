@@ -1555,3 +1555,143 @@ write.csv(
 )
 
 cat("\nAnalysis complete. Detailed results saved to 'Data/tif_size_analysis.csv'\n")
+# Create .csv file for new CAPTAIN model 
+
+metrics_10_iucn_continental <- readRDS(here::here("Data", "My dataframes", 
+                                      "continental_shark_conservation_metrics_10_harmonised_IUCN.rds"))
+metrics_30_iucn_continental <- readRDS(here::here("Data", "My dataframes", 
+                                      "continental_shark_conservation_metrics_30_harmonised_IUCN.rds"))
+
+metrics_10_iucn_continental_csv = cbind.data.frame(
+metrics_10_iucn_continental$iucn_GE$info$species_name,
+metrics_10_iucn_continental$iucn_GE$transformed$amount,
+metrics_10_iucn_continental$FUSE$transformed$amount,
+metrics_10_iucn_continental$EDGE2$transformed$amount
+)
+
+colnames(metrics_10_iucn_continental_csv)=c("Species name", "IUCN", "FUSE", "EDGE2")
+
+metrics_30_iucn_continental_csv = cbind.data.frame(
+  metrics_30_iucn_continental$iucn_GE$info$species_name,
+  metrics_30_iucn_continental$iucn_GE$transformed$amount,
+  metrics_30_iucn_continental$FUSE$transformed$amount,
+  metrics_30_iucn_continental$EDGE2$transformed$amount
+)
+
+colnames(metrics_30_iucn_continental_csv)=c("Species name", "IUCN", "FUSE", "EDGE2")
+
+# Save the 10% metrics dataframe
+write.csv(metrics_10_iucn_continental_csv, 
+          file = here::here("Data", "My dataframes","continental_shark_conservation_metrics_10_harmonised_IUCN_csv.csv"), 
+          row.names = FALSE)
+
+# Save the 30% metrics dataframe
+write.csv(metrics_30_iucn_continental_csv, 
+          file = here::here("Data", "My dataframes","continental_shark_conservation_metrics_30_harmonised_IUCN_csv.csv"), 
+          row.names = FALSE)
+
+# Categorise these three values 
+
+# Create a new dataframe for the categorized data
+metrics_10_categorized <- metrics_10_iucn_continental_csv
+
+# For IUCN, map the existing unique values to categories 1-5
+# Based on the unique values: 0.025, 0.250, 0.500, 0.750, 1.000
+metrics_10_categorized$IUCN <- factor(metrics_10_categorized$IUCN,
+                                          levels = c(0.025, 0.250, 0.500, 0.750, 1.000),
+                                          labels = c(1, 2, 3, 4, 5))
+
+# For FUSE, categorize into 5 classes
+metrics_10_categorized$FUSE <- cut(metrics_10_categorized$FUSE, 
+                                       breaks = c(-Inf, 0.2, 0.4, 0.6, 0.8, Inf),
+                                       labels = c(1, 2, 3, 4, 5))
+
+# For EDGE2, categorize into 5 classes
+metrics_10_categorized$EDGE2 <- cut(metrics_10_categorized$EDGE2, 
+                                        breaks = c(-Inf, 0.2, 0.4, 0.6, 0.8, Inf),
+                                        labels = c(1, 2, 3, 4, 5))
+
+# Save the 10% metrics dataframe
+write.csv(metrics_10_categorized, 
+          file = here::here("Data", "My dataframes","continental_shark_conservation_metrics_10_harmonised_IUCN_categories.csv"), 
+          row.names = FALSE)
+
+#Compare categories
+# First, ensure we're just working with the categorized 10% dataset
+cat_data <- metrics_10_categorized
+
+# Create a summary table showing the distribution of species across categories for each metric
+summary_table <- data.frame(
+  Metric = c(rep("IUCN", 5), rep("FUSE", 5), rep("EDGE2", 5)),
+  Category = rep(1:5, 3),
+  Count = c(
+    table(cat_data$IUCN_cat),
+    table(cat_data$FUSE_cat),
+    table(cat_data$EDGE2_cat)
+  )
+)
+
+# Cross-tabulation between pairs of metrics
+iucn_vs_fuse <- table(cat_data$IUCN_cat, cat_data$FUSE_cat)
+iucn_vs_edge2 <- table(cat_data$IUCN_cat, cat_data$EDGE2_cat)
+fuse_vs_edge2 <- table(cat_data$FUSE_cat, cat_data$EDGE2_cat)
+
+# Calculate agreement/disagreement
+# Count how many species have the same category across all three metrics
+full_agreement <- sum(cat_data$IUCN_cat == cat_data$FUSE_cat & 
+                        cat_data$IUCN_cat == cat_data$EDGE2_cat)
+
+# Count how many species have different categories for each metric
+all_different <- sum(cat_data$IUCN_cat != cat_data$FUSE_cat & 
+                       cat_data$IUCN_cat != cat_data$EDGE2_cat &
+                       cat_data$FUSE_cat != cat_data$EDGE2_cat)
+
+# Calculate pairwise agreement percentages
+iucn_fuse_agreement <- sum(cat_data$IUCN_cat == cat_data$FUSE_cat) / nrow(cat_data) * 100
+iucn_edge2_agreement <- sum(cat_data$IUCN_cat == cat_data$EDGE2_cat) / nrow(cat_data) * 100
+fuse_edge2_agreement <- sum(cat_data$FUSE_cat == cat_data$EDGE2_cat) / nrow(cat_data) * 100
+
+# Identify species with the biggest disagreements (difference of 2+ categories)
+cat_data$max_diff <- apply(cat_data[,c("IUCN_cat", "FUSE_cat", "EDGE2_cat")], 1, function(x) {
+  x <- as.numeric(as.character(x))
+  max(x) - min(x)
+})
+
+large_disagreement <- cat_data[cat_data$max_diff >= 2, c("Species name", "IUCN_cat", "FUSE_cat", "EDGE2_cat")]
+
+# Check which metric tends to give higher/lower categories
+cat_data$IUCN_numeric <- as.numeric(as.character(cat_data$IUCN_cat))
+cat_data$FUSE_numeric <- as.numeric(as.character(cat_data$FUSE_cat))
+cat_data$EDGE2_numeric <- as.numeric(as.character(cat_data$EDGE2_cat))
+
+avg_categories <- c(
+  mean(cat_data$IUCN_numeric, na.rm=TRUE),
+  mean(cat_data$FUSE_numeric, na.rm=TRUE),
+  mean(cat_data$EDGE2_numeric, na.rm=TRUE)
+)
+names(avg_categories) <- c("IUCN", "FUSE", "EDGE2")
+
+# Print results
+print(summary_table)
+cat("\nCross-tabulation of IUCN vs FUSE:\n")
+print(iucn_vs_fuse)
+cat("\nCross-tabulation of IUCN vs EDGE2:\n")
+print(iucn_vs_edge2)
+cat("\nCross-tabulation of FUSE vs EDGE2:\n")
+print(fuse_vs_edge2)
+
+cat("\nPercentage of species with full agreement across all metrics: ", 
+    round(full_agreement/nrow(cat_data)*100, 1), "%\n")
+cat("Percentage of species with completely different categories: ", 
+    round(all_different/nrow(cat_data)*100, 1), "%\n")
+
+cat("\nPairwise agreement percentages:\n")
+cat("IUCN vs FUSE: ", round(iucn_fuse_agreement, 1), "%\n")
+cat("IUCN vs EDGE2: ", round(iucn_edge2_agreement, 1), "%\n")
+cat("FUSE vs EDGE2: ", round(fuse_edge2_agreement, 1), "%\n")
+
+cat("\nSpecies with large disagreements (difference of 2+ categories):\n")
+print(large_disagreement)
+
+cat("\nAverage category by metric:\n")
+print(round(avg_categories, 2))
