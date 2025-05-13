@@ -1280,13 +1280,13 @@ for (sp_id in species_ids) {
     fun = max  # If multiple points in same cell, take maximum value
   )
   
-  # File name with species ID and name
-  filename <- file.path(tif_dir, paste0("sp_", sp_id, "_", safe_name, ".tif"))
+  # File name with species name only
+  filename <- file.path(tif_dir, paste0(safe_name, ".tif"))
   
   # Write to file
   writeRaster(r_filled, filename, format = "GTiff", overwrite = TRUE)
   
-  cat("Created raster for species", sp_id, "-", sp_name, "\n")
+  cat("Created raster for", sp_name, "\n")
 }
 
 cat("Process complete. Created TIF files in:", tif_dir, "\n")
@@ -1555,7 +1555,8 @@ write.csv(
 )
 
 cat("\nAnalysis complete. Detailed results saved to 'Data/tif_size_analysis.csv'\n")
-# Create .csv file for new CAPTAIN model 
+
+# Create .csv file for new CAPTAIN model ----
 
 metrics_10_iucn_continental <- readRDS(here::here("Data", "My dataframes", 
                                       "continental_shark_conservation_metrics_10_harmonised_IUCN.rds"))
@@ -1610,6 +1611,12 @@ metrics_10_categorized$FUSE <- cut(metrics_10_categorized$FUSE,
 metrics_10_categorized$EDGE2 <- cut(metrics_10_categorized$EDGE2, 
                                         breaks = c(-Inf, 0.2, 0.4, 0.6, 0.8, Inf),
                                         labels = c(1, 2, 3, 4, 5))
+
+# If you want to update the original column instead of creating a new one:
+metrics_10_categorized$`Species name` <- gsub(" ", "_", metrics_10_categorized$`Species name`)
+
+# View the updated dataframe
+head(metrics_10_categorized)
 
 # Save the 10% metrics dataframe
 write.csv(metrics_10_categorized, 
