@@ -107,6 +107,369 @@ print(sd(results$percentage_in_NT_MPA))
 write.csv(results, here::here("Data","species_mpa_coverage_ALL_and_NT.csv"), row.names = FALSE)
 ```
 
+# Map of mean % range covered  
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(smoothr)
+library(terra)  # For raster operations
+
+# Convert results to a named vector for easier lookup
+species_NT_percentages <- setNames(results$percentage_in_NT_MPA, results$species)
+
+# Create a new dataframe to store results
+grid_data <- puvsp_marine %>%
+  dplyr::select(lon, lat) %>%
+  mutate(
+    species_count = 0,
+    sum_percentages = 0
+  )
+
+# For each species, add its coverage percentage to cells where it's present
+for (sp_name in names(species_NT_percentages)) {
+  # Find the column index in the original data
+  col_idx <- which(names(puvsp_marine) == sp_name)
+  
+  if (length(col_idx) > 0) {
+    # Find cells where this species is present
+    present_cells <- which(puvsp_marine[[col_idx]] == 1)
+    
+    if (length(present_cells) > 0) {
+      # Add to species count
+      grid_data$species_count[present_cells] <- grid_data$species_count[present_cells] + 1
+      
+      # Add the species' NT percentage to the sum
+      grid_data$sum_percentages[present_cells] <- 
+        grid_data$sum_percentages[present_cells] + species_NT_percentages[sp_name]
+    }
+  }
+}
+
+# Calculate mean percentage for each grid cell
+grid_data <- grid_data %>%
+  mutate(mean_NT_coverage = ifelse(species_count > 0, sum_percentages / species_count, NA)) %>%
+  filter(!is.na(mean_NT_coverage))
+
+# Report global statistics
+cat("Global mean percentage of species ranges in No-Take MPAs:", 
+    mean(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Global median percentage of species ranges in No-Take MPAs:", 
+    median(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Standard deviation:", 
+    sd(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+
+# Load high seas polygon data
+High_seas = st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"))
+
+# Create template raster
+template_raster <- rast(ext(High_seas), resolution = 0.5)
+
+# Rasterize high seas polygon
+highseas_raster <- rasterize(vect(High_seas), template_raster, field = 1, background = 0)
+
+# Convert grid_data to terra SpatVector for extraction
+grid_points <- vect(as.data.frame(grid_data), 
+                   geom = c("lon", "lat"), 
+                   crs = crs(highseas_raster))
+
+# Extract values from highseas raster
+highseas_values <- terra::extract(highseas_raster, grid_points)
+
+# Add highseas classification back to the dataframe
+grid_data$is_highseas <- highseas_values[, 2]
+grid_data$is_highseas[is.na(grid_data$is_highseas)] <- 0  # Set NA to 0 (continental)
+
+# Filter to keep only continental waters (is_highseas = 0)
+grid_data_continental <- grid_data %>%
+  filter(is_highseas == 0)
+
+# Define the projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Convert grid data to sf object and project (continental waters only)
+grid_data_sf <- grid_data_continental %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Get and project land
+land_projected <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Calculate the data range for better color scaling
+max_value <- max(grid_data_continental$mean_NT_coverage, na.rm = TRUE)
+color_breaks <- seq(0, ceiling(max_value / 10) * 10, by = 2)
+
+# Map with built-in transformation
+nt_map_projected <- ggplot() +
+  geom_sf(data = grid_data_sf, aes(color = mean_NT_coverage), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_viridis_c(
+    option = "viridis",
+    name = "Mean % range in\nNo-Take MPAs",
+    trans = "sqrt",  # Use "log10" for log scale
+    breaks = color_breaks,
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(
+   # title = "Mean Percentage of Species Range in No-Take MPAs",
+  #  subtitle = "Continental Waters Only (Square Root Scale)",
+    x = NULL, y = NULL
+  ) +
+#  annotate("text", x = -Inf, y = Inf, label = "(A)", 
+#           hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+  my_theme
+
+# Print the projected map
+print(nt_map_projected)
+
+# Save the projected map (continental waters only)
+ggsave(here::here("NT_MPA_coverage_continental.png"), nt_map_projected, width = 10, height = 7, dpi = 300)
+
+# Report continental waters statistics
+cat("\nContinental Waters Statistics:\n")
+cat("Mean percentage of species ranges in No-Take MPAs:", 
+    mean(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Max percentage of species ranges in No-Take MPAs:", 
+    max(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Median percentage of species ranges in No-Take MPAs:", 
+    median(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Standard deviation:", 
+    sd(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+```
+
+# Breakdown by realm, ecoregion and EEZ 
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(terra)
+library(here)
+
+# Load shapefiles
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE)
+
+# Convert grid_data_continental to sf for spatial operations
+grid_sf <- grid_data_continental %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+#=====================
+# Calculate by Realm
+#=====================
+# Extract realms from meow_ecos
+realms <- meow_ecos %>%
+  group_by(REALM) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  ungroup()
+
+# Spatial join with realms
+grid_realms <- st_join(grid_sf, realms)
+
+# Calculate mean coverage by realm
+realm_stats <- grid_realms %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+#======================
+# Calculate by Ecoregion
+#======================
+# Spatial join with ecoregions
+grid_ecoregions <- st_join(grid_sf, meow_ecos)
+
+# Calculate mean coverage by ecoregion
+ecoregion_stats <- grid_ecoregions %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION) %>%
+  summarize(
+    PROVINCE = first(PROVINCE),
+    REALM = first(REALM),
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+#======================
+# Calculate by EEZ
+#======================
+# Fix potential invalid geometries in EEZ data
+eez_valid <- st_make_valid(eez)
+
+# Spatial join with EEZ
+grid_eez <- st_join(grid_sf, eez_valid %>% dplyr::select(TERRITORY1, SOVEREIGN1, ISO_TER1, MRGID_TER1))
+
+# Calculate mean coverage by EEZ
+eez_stats <- grid_eez %>%
+  st_drop_geometry() %>%
+  group_by(TERRITORY1, SOVEREIGN1) %>%
+  summarize(
+    ISO_TER1 = first(ISO_TER1),
+    MRGID_TER1 = first(MRGID_TER1),
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+# Print summary tables
+cat("Top 10 Realms by Mean No-Take MPA Coverage:\n")
+print(head(realm_stats, 10))
+
+cat("\nTop 10 Ecoregions by Mean No-Take MPA Coverage:\n")
+print(head(ecoregion_stats, 10))
+
+cat("\nTop 10 EEZs by Mean No-Take MPA Coverage:\n")
+print(head(eez_stats, 10))
+
+#======================
+# Create visualizations
+#======================
+
+# 1. Choropleth map of ecoregions
+# Join stats back to spatial data
+meow_ecos_stats <- meow_ecos %>%
+  left_join(ecoregion_stats, by = "ECOREGION")
+
+# Plot ecoregions map
+eco_map <- ggplot() +
+  geom_sf(data = meow_ecos_stats, aes(fill = mean_NT_coverage), color = NA) +
+  geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
+          fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Mean % range in\nNo-Take MPAs",
+    na.value = "grey90",
+    trans = "sqrt",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Mean No-Take MPA Coverage by Marine Ecoregion",
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank()
+  )
+
+# Save ecoregion map
+ggsave(here("Results", "ecoregion_NT_coverage_map.png"), eco_map, width = 12, height = 8, dpi = 300)
+
+# 2. Choropleth map of EEZs
+# Join stats back to spatial data
+eez_stats_map <- eez_valid %>%
+  left_join(eez_stats, by = c("TERRITORY1", "SOVEREIGN1"))
+
+# Plot EEZ map
+eez_map <- ggplot() +
+  geom_sf(data = eez_stats_map, aes(fill = mean_NT_coverage), color = NA) +
+  geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
+          fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Mean % range in\nNo-Take MPAs",
+    na.value = "grey90",
+    trans = "sqrt",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Mean No-Take MPA Coverage by Exclusive Economic Zone (EEZ)",
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank()
+  )
+
+# Save EEZ map
+ggsave(here("Results", "eez_NT_coverage_map.png"), eez_map, width = 12, height = 8, dpi = 300)
+
+# 3. Bar plots for top regions
+# Top 20 Ecoregions
+top_eco_plot <- ggplot(head(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Top 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % Range in No-Take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save top ecoregions plot
+ggsave(here("Results", "top_ecoregions_NT_coverage.png"), top_eco_plot, width = 10, height = 8, dpi = 300)
+
+# Top 20 EEZs
+top_eez_plot <- ggplot(head(eez_stats, 20), aes(x = reorder(TERRITORY1, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Top 20 EEZs by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % Range in No-Take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save top EEZs plot
+ggsave(here("Results", "top_eezs_NT_coverage.png"), top_eez_plot, width = 10, height = 8, dpi = 300)
+```
+
 # Null model of MPA placement within EEZs
 
 Null model of MPA placement and overlaps with the range of sharks and rays
