@@ -212,7 +212,7 @@ continental_plot_FUSE_01 <- ggplot() +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
-    values = c(0, 0.5, 1),
+    values = c(0, 0.25, 1),
     name = "Priority",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
@@ -474,7 +474,7 @@ continental_plot_EDGE2_01 <- ggplot() +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
-    values = c(0, 0.5, 1),
+    values = c(0, 0.25, 1),
     name = "Priority",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
@@ -4386,7 +4386,7 @@ IUCN_P100_plot <- ggplot() +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
-    values = c(0, 0.5, 1),
+    values = c(0, 0.25, 1),
     name = "Priority",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
@@ -6250,22 +6250,32 @@ add_panel_labels <- function(plot, label) {
 }
 
 # Add labels to each plot
+# First grid
 IUCN_P100_plot_labeled <- add_panel_labels(IUCN_P100_plot, "A")
 continental_plot_FUSE_01_labeled <- add_panel_labels(continental_plot_FUSE_01, "B")
 continental_plot_EDGE2_01_labeled <- add_panel_labels(continental_plot_EDGE2_01, "C")
-p100_vs_fuse_continental_plot_labeled <- add_panel_labels(p100_vs_fuse_continental_plot, "D")
-p100_vs_edge2_continental_plot_labeled <- add_panel_labels(p100_vs_edge2_continental_plot, "E")
-difference_plot_FUSE_EDGE2_01_continental_labeled <- add_panel_labels(difference_plot_FUSE_EDGE2_01_continental, "F")
 
-# Combine plots into a 2x3 grid
-combined_plot <- (IUCN_P100_plot_labeled + continental_plot_FUSE_01_labeled + continental_plot_EDGE2_01_labeled) /
-                 (p100_vs_fuse_continental_plot_labeled + p100_vs_edge2_continental_plot_labeled +  difference_plot_FUSE_EDGE2_01_continental_labeled)
+# Second grid - also using A, B, C labels
+p100_vs_fuse_continental_plot_labeled <- add_panel_labels(p100_vs_fuse_continental_plot, "A")
+p100_vs_edge2_continental_plot_labeled <- add_panel_labels(p100_vs_edge2_continental_plot, "B")
+difference_plot_FUSE_EDGE2_01_continental_labeled <- add_panel_labels(difference_plot_FUSE_EDGE2_01_continental, "C")
 
-# Display the combined plot
-combined_plot
+# Combine plots into two separate grids, each with 3 rows and 1 column
+grid1 <- IUCN_P100_plot_labeled /
+         continental_plot_FUSE_01_labeled /
+         continental_plot_EDGE2_01_labeled
 
-# Save the combined plot if needed
-ggsave(here::here("six_maps_continental_10.png"), combined_plot, width = 15, height = 10, dpi = 300)
+grid2 <- p100_vs_fuse_continental_plot_labeled /
+         p100_vs_edge2_continental_plot_labeled /
+         difference_plot_FUSE_EDGE2_01_continental_labeled
+
+# Display each grid separately
+grid1
+grid2
+
+# Save the grids if needed
+ggsave(here::here("grid1_maps_continental.png"), grid1, width = 8, height = 15, dpi = 300)
+ggsave(here::here("grid2_maps_continental.png"), grid2, width = 8, height = 15, dpi = 300)
 ```
 
 ### Relationship with fishing effort : bivariate maps 
