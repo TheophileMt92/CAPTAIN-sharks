@@ -262,6 +262,8 @@ cat("Mean percentage of species ranges in No-Take MPAs:",
     mean(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
 cat("Max percentage of species ranges in No-Take MPAs:", 
     max(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Min percentage of species ranges in No-Take MPAs:", 
+    min(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
 cat("Median percentage of species ranges in No-Take MPAs:", 
     median(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
 cat("Standard deviation:", 
@@ -1776,6 +1778,41 @@ grid_plot <- ggarrange(
 # Save the plot if needed
 ggsave(here::here("outputs","combined_plot_GAP_analysis.png"), grid_plot, width = 8.5, height = 12, dpi = 300, bg="white")
 
+library(ggpubr)
+library(here)
+
+# Create a new grid with only plots A and C
+updated_grid_plot <- ggarrange(
+  stacked_bar_chart,                  # Plot A
+  continental_plot_NT,                # Plot C (renamed as B)
+  ncol = 1,
+  heights = c(0.25, 1),               # Adjust heights after removing Plot B
+  labels = c("(A)", "(B)"),           # Update labels
+  font.label = list(size = 16, face = "bold"),
+  vjust = 1,
+  hjust = -0.1
+)
+
+# Save the updated grid plot (A and C)
+ggsave(
+  filename = here::here("outputs", "updated_combined_plot_GAP_analysis.png"),
+  plot = updated_grid_plot,
+  width = 8.5,
+  height = 9,                        # Adjust height to match the new layout
+  dpi = 300,
+  bg = "white"
+)
+
+# Save Plot B (iucn_plot_NT) separately
+ggsave(
+  filename = here::here("outputs", "plot_B_iucn.png"),
+  plot = iucn_plot_NT,                # Save only Plot B
+  width = 8.5,
+  height = 6,                         # Set appropriate dimensions for Plot B
+  dpi = 300,
+  bg = "white"
+)
+
 ```
 
 # Relate to IUCN status
@@ -2712,158 +2749,257 @@ ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width =
 ### Ridgeline chart : six charts 
 
 ```{r}
-library(tidyverse)
-library(ggridges)
+# Load required packages
+library(here)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
-# 1. First prepare the IUCN data and function
-prepare_iucn_data <- function(species_data, species_col) {
-  IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
-  IUCN$species <- gsub("_", " ", IUCN$Species)
+# Read the protected range fractions RDS file
+protected_fractions <- readRDS(here::here("Data", "CAPTAIN2_protected_range_fractions.rds"))
+
+# Read the continental shark conservation metrics CSV file
+shark_metrics <- read_csv(here::here("Data", "continental_shark_conservation_metrics_10_harmonised_IUCN_categories.csv"))
+
+# Rename column in shark_metrics to match better
+shark_metrics <- shark_metrics %>%
+  rename(Species = `Species name`)
+
+# Create new dataset with species IDs for both datasets
+# Assuming the order is preserved (species are in the same order in both files)
+if(nrow(protected_fractions) == nrow(shark_metrics)) {
+  # Add row numbers as common identifiers
+  protected_fractions$ID <- 1:nrow(protected_fractions)
+  shark_metrics$ID <- 1:nrow(shark_metrics)
   
-  # Rename the species column in the input data to match
-  species_data <- species_data %>%
-    dplyr::rename(species = all_of(species_col))
-  
-  results_IUCN <- left_join(IUCN, species_data, by="species") %>%
-    mutate(IUCN_status = case_when(
-      iucn_GE == 0 ~ "LC",
-      iucn_GE == 1 ~ "NT",
-      iucn_GE == 2 ~ "VU",
-      iucn_GE == 3 ~ "EN",
-      iucn_GE == 4 ~ "CR",
-      TRUE ~ "Unknown"
-    )) %>%
-    filter(IUCN_status != "Unknown")
-  
-  return(results_IUCN)
-}
-
-# 2. Prepare all datasets
-mpa_data <- results %>%
-  dplyr::select(species, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
-  dplyr::rename(Species = species)
-
-fuse01_data <- readRDS(here::here("Data", "combined_protection_FUSE_01.rds"))
-fuse03_data <- readRDS(here::here("Data", "combined_protection_FUSE_03.rds"))
-edge01_data <- readRDS(here::here("Data", "combined_protection_EDGE_01.rds"))
-edge03_data <- readRDS(here::here("Data", "combined_protection_EDGE_03.rds"))
-
-# 3. Create separate dataframes with IUCN status
-# Modify the MPA data scenario names
-mpa_iucn <- prepare_iucn_data(mpa_data, "Species") %>%
-  dplyr::select(species, IUCN_status, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
-  pivot_longer(cols = c(percentage_in_ALL_MPA, percentage_in_NT_MPA),
-               names_to = "scenario",
-               values_to = "protection") %>%
-  mutate(scenario = case_when(
-    scenario == "percentage_in_NT_MPA" ~ "Current no-take MPAs overlaps",
-    scenario == "percentage_in_ALL_MPA" ~ "Current all MPAs overlaps"
-  ))
-
-# Modify FUSE scenarios names
-fuse01_iucn <- prepare_iucn_data(fuse01_data, "Species") %>%
-  dplyr::select(species, IUCN_status, weighted_protection) %>%
-  mutate(protection = weighted_protection * 100,
-         scenario = "FUSE scenario, budget 10%") %>%
-  dplyr::select(-weighted_protection)
-
-fuse03_iucn <- prepare_iucn_data(fuse03_data, "Species") %>%
-  dplyr::select(species, IUCN_status, weighted_protection) %>%
-  mutate(protection = weighted_protection * 100,
-         scenario = "FUSE scenario, budget 30%") %>%
-  dplyr::select(-weighted_protection)
-
-# Modify EDGE2 scenarios names
-edge01_iucn <- prepare_iucn_data(edge01_data, "species_name") %>%
-  dplyr::select(species, IUCN_status, weighted_protection) %>%
-  mutate(protection = weighted_protection * 100,
-         scenario = "EDGE2 scenario, budget 10%") %>%
-  dplyr::select(-weighted_protection)
-
-edge03_iucn <- prepare_iucn_data(edge03_data, "species_name") %>%
-  dplyr::select(species, IUCN_status, weighted_protection) %>%
-  mutate(protection = weighted_protection * 100,
-         scenario = "EDGE2 scenario, budget 30%") %>%
-  dplyr::select(-weighted_protection)
-
-# Combine all data
-combined_data <- bind_rows(
-  mpa_iucn,
-  fuse01_iucn,
-  fuse03_iucn,
-  edge01_iucn,
-  edge03_iucn
-)
-
-# Update factor levels with new names
-combined_data$scenario <- factor(combined_data$scenario,
-                               levels = c("Current no-take MPAs overlaps", 
-                                        "Current all MPAs overlaps",
-                                        "FUSE scenario, budget 10%", 
-                                        "FUSE scenario, budget 30%",
-                                        "EDGE2 scenario, budget 10%", 
-                                        "EDGE2 scenario, budget 30%"))
-# 6. Create the plot
-iucn_colors <- c(
-  "CR" = "#D81E05",
-  "EN" = "#FC7F3F",
-  "VU" = "#FEC748",
-  "NT" = "#58AFFF",
-  "LC" = "#38AB38"
-)
-
-iucn_order <- c("LC", "NT", "VU", "EN", "CR")
-
-# Modify the plot
-rdplot = ggplot(combined_data, 
-       aes(x = factor(IUCN_status, levels = iucn_order), 
-           y = protection)) +
-  geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
-              trim = FALSE, 
-              alpha = 0.5) +
-  geom_jitter(width = 0.1, 
-              size = 0.4, 
-              alpha = 0.5, 
-              color = "darkgray") +
-  geom_boxplot(width = 0.1, 
-               fill = "white", 
-               color = "black", 
-               outlier.shape = NA, 
-               alpha = 0.8) +
-  facet_wrap(~scenario, ncol = 3, nrow= 2, dir = "v") +  # Single column arrangement
-  labs(x = "IUCN Red List threat status", 
-       y = "Range protected (%)") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "none",
-    strip.text = element_text(face = "bold", color = "white"),
-    strip.background = element_rect(fill = "black"),
-    panel.grid.major.x = element_blank()
-  ) +
-  scale_x_discrete(limits = iucn_order) +
-  scale_fill_manual(values = iucn_colors) +
-  scale_color_manual(values = iucn_colors) +
-  scale_y_continuous(limits = c(0, 100),
-                    breaks = seq(0, 100, 25))
-rdplot
-
-# Add white background to the plot
-rdplot_white = rdplot + 
-  theme(
-    plot.background = element_rect(fill = "white", color = NA),
-    panel.background = element_rect(fill = "white", color = NA)
+  # Join the datasets by ID
+  combined_data <- inner_join(
+    protected_fractions,
+    shark_metrics,
+    by = "ID",
+    suffix = c("_captain", "_original")
   )
-
-# Save only PNG with white background
-ggsave(
-  filename = here::here("scenarios_IUCN_protection_3cols.png"),
-  plot = rdplot_white,
-  width = 8,
-  height = 5,
-  dpi = 300,
-  bg = "white"  # This ensures white background in the saved file
-)
+  
+  cat("Successfully joined datasets with", nrow(combined_data), "species\n")
+  
+  # Check the first few rows to confirm the join worked
+  head(combined_data)
+  
+  # Reshape data for plotting
+  # Convert to long format for faceting by index
+  combined_long <- combined_data %>%
+    pivot_longer(
+      cols = c(IUCN_captain, FUSE_captain, EDGE2_captain),
+      names_to = "index_captain",
+      values_to = "protection_fraction"
+    ) %>%
+    # Remove "_captain" suffix
+    mutate(index = gsub("_captain", "", index_captain)) %>%
+    # Convert protection fraction to percentage
+    mutate(protection_percentage = protection_fraction * 100)
+  
+  # Define IUCN categories and order - using only the first 5 categories
+  iucn_labels <- c(
+    "1" = "LC", 
+    "2" = "NT", 
+    "3" = "VU", 
+    "4" = "EN", 
+    "5" = "CR"
+  )
+  
+  iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+  
+  # Define colors for IUCN categories
+  iucn_colors <- c(
+    "LC" = "#50C878",     # Green
+    "NT" = "#FFFF00",     # Yellow
+    "VU" = "#FFA500",     # Orange
+    "EN" = "#FF8C00",     # Dark Orange
+    "CR" = "#FF0000"      # Red
+  )
+  
+  # Create the plot
+  iucn_plot <- combined_long %>%
+    mutate(
+      # Convert IUCN numeric values to factor with labels
+      IUCN_status = factor(IUCN_original, levels = as.numeric(names(iucn_labels)), labels = iucn_labels)
+    ) %>%
+    ggplot(aes(x = IUCN_status, y = protection_percentage)) +
+    geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
+                trim = FALSE, 
+                alpha = 0.5) +
+    geom_jitter(width = 0.1, 
+                size = 0.4, 
+                alpha = 0.5, 
+                color = "darkgray") +
+    geom_boxplot(width = 0.1, 
+                 fill = "white", 
+                 color = "black", 
+                 outlier.shape = NA, 
+                 alpha = 0.8) +
+    facet_wrap(~index, ncol = 3, dir = "h") +
+    labs(title = "Range Protection by IUCN Status for Different Conservation Indices",
+         x = "IUCN Red List threat status", 
+         y = "Range protected (%)") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none",
+      strip.text = element_text(face = "bold", color = "white"),
+      strip.background = element_rect(fill = "black"),
+      panel.grid.major.x = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    ) +
+    scale_fill_manual(values = iucn_colors) +
+    scale_color_manual(values = iucn_colors) +
+    scale_y_continuous(limits = c(0, 100),
+                      breaks = seq(0, 100, 25))
+  
+  # Display the plot
+  print(iucn_plot)
+  
+  # Save the plot
+  ggsave(here::here("outputs", "protection_by_iucn_status.png"), 
+         iucn_plot, width = 12, height = 8, dpi = 300)
+  
+  # Create plots comparing original metrics vs protected fractions
+  
+  # For IUCN
+  iucn_comparison <- combined_data %>%
+    mutate(
+      IUCN_status = factor(IUCN_original, levels = as.numeric(names(iucn_labels)), labels = iucn_labels),
+      protection_percentage = IUCN_captain * 100
+    ) %>%
+    ggplot(aes(x = IUCN_status, y = protection_percentage)) +
+    geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
+                trim = FALSE, 
+                alpha = 0.5) +
+    geom_jitter(width = 0.1, 
+                size = 0.4, 
+                alpha = 0.5, 
+                color = "darkgray") +
+    geom_boxplot(width = 0.1, 
+                 fill = "white", 
+                 color = "black", 
+                 outlier.shape = NA, 
+                 alpha = 0.8) +
+    labs(title = "IUCN Priority Index: Protection by IUCN Status",
+         x = "IUCN Red List threat status", 
+         y = "Range protected (%)") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.major.x = element_blank()
+    ) +
+    scale_fill_manual(values = iucn_colors) +
+    scale_color_manual(values = iucn_colors) +
+    scale_y_continuous(limits = c(0, 100),
+                      breaks = seq(0, 100, 25))
+  
+  # For FUSE
+  fuse_comparison <- combined_data %>%
+    mutate(
+      FUSE_category = factor(FUSE_original),
+      protection_percentage = FUSE_captain * 100
+    ) %>%
+    ggplot(aes(x = FUSE_category, y = protection_percentage)) +
+    geom_violin(aes(fill = FUSE_category, color = FUSE_category), 
+                trim = FALSE, 
+                alpha = 0.5) +
+    geom_jitter(width = 0.1, 
+                size = 0.4, 
+                alpha = 0.5, 
+                color = "darkgray") +
+    geom_boxplot(width = 0.1, 
+                 fill = "white", 
+                 color = "black", 
+                 outlier.shape = NA, 
+                 alpha = 0.8) +
+    labs(title = "FUSE Priority Index: Protection by Original FUSE Score",
+         x = "Original FUSE Score", 
+         y = "Range protected (%)") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none",
+      panel.grid.major.x = element_blank()
+    ) +
+    scale_y_continuous(limits = c(0, 100),
+                      breaks = seq(0, 100, 25))
+  
+  # For EDGE2
+  edge2_comparison <- combined_data %>%
+    mutate(
+      EDGE2_category = factor(EDGE2_original),
+      protection_percentage = EDGE2_captain * 100
+    ) %>%
+    ggplot(aes(x = EDGE2_category, y = protection_percentage)) +
+    geom_violin(aes(fill = EDGE2_category, color = EDGE2_category), 
+                trim = FALSE, 
+                alpha = 0.5) +
+    geom_jitter(width = 0.1, 
+                size = 0.4, 
+                alpha = 0.5, 
+                color = "darkgray") +
+    geom_boxplot(width = 0.1, 
+                 fill = "white", 
+                 color = "black", 
+                 outlier.shape = NA, 
+                 alpha = 0.8) +
+    labs(title = "EDGE2 Priority Index: Protection by Original EDGE2 Score",
+         x = "Original EDGE2 Score", 
+         y = "Range protected (%)") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none",
+      panel.grid.major.x = element_blank()
+    ) +
+    scale_y_continuous(limits = c(0, 100),
+                      breaks = seq(0, 100, 25))
+  
+  # Display individual plots
+  print(iucn_comparison)
+  print(fuse_comparison)
+  print(edge2_comparison)
+  
+  # Save individual plots
+  ggsave(here::here("outputs", "iucn_protection_comparison.png"), 
+         iucn_comparison, width = 10, height = 6, dpi = 300)
+  ggsave(here::here("outputs", "fuse_protection_comparison.png"), 
+         fuse_comparison, width = 10, height = 6, dpi = 300)
+  ggsave(here::here("outputs", "edge2_protection_comparison.png"), 
+         edge2_comparison, width = 10, height = 6, dpi = 300)
+  
+  # Calculate summary statistics by category
+  summary_stats <- combined_long %>%
+    mutate(
+      IUCN_status = factor(IUCN_original, levels = as.numeric(names(iucn_labels)), labels = iucn_labels),
+      protection_percentage = protection_fraction * 100
+    ) %>%
+    group_by(index, IUCN_status) %>%
+    summarise(
+      mean_protection = mean(protection_percentage, na.rm = TRUE),
+      median_protection = median(protection_percentage, na.rm = TRUE),
+      sd_protection = sd(protection_percentage, na.rm = TRUE),
+      n_species = n(),
+      .groups = "drop"
+    )
+  
+  # Print summary statistics
+  print(summary_stats)
+  
+  # Save summary statistics
+  write.csv(summary_stats, here::here("outputs", "protection_summary_by_category.csv"), row.names = FALSE)
+  
+} else {
+  cat("ERROR: Datasets have different number of rows.\n")
+  cat("Protected fractions:", nrow(protected_fractions), "rows\n")
+  cat("Shark metrics:", nrow(shark_metrics), "rows\n")
+}
 
 ```
 
@@ -3028,8 +3164,9 @@ rdplot = ggplot(notake_mpa_iucn,
   scale_x_discrete(limits = iucn_order) +
   scale_fill_manual(values = iucn_colors) +
   scale_color_manual(values = iucn_colors) +
-  scale_y_sqrt(limits = c(0, 80),
-                    breaks = seq(0, 80, 20))
+  scale_y_sqrt(limits = c(0, 50),
+                    breaks = seq(0, 50, 10), # Ensure tick marks are at increments of 10
+    labels = c("0", "10", "20", "30", "40", "")) # Remove the text label for 50
 rdplot
 # Add white background to the plot
 rdplot_white = rdplot + 
@@ -3048,6 +3185,43 @@ ggsave(
   bg = "white"  # This ensures white background in the saved file
 )
 ```
+
+### Grid of Fig. 1
+
+```{r}
+# Load the necessary libraries
+library(ggpubr)
+library(here)
+
+# Combine the two plots into a grid with two rows and one column
+# Adjust the relative heights using the `heights` argument, and add labels
+final_plot <- ggarrange(
+  rdplot_white,                       # Plot A
+  nt_map_projected,                   # Plot B
+  ncol = 1,                           # 1 column
+  nrow = 2,                           # 2 rows
+  heights = c(1, 1.5),                # Relative heights (less height for A)
+  labels = c("(A)", "(B)"),           # Add labels to the plots
+  font.label = list(size = 14,        # Customize label font size
+                    face = "bold")    # Make labels bold
+)
+
+# Define the output path using `here`
+output_path <- here::here("outputs", "Fig_1.png")
+
+# Save the final plot using `ggsave`
+ggsave(
+  filename = output_path,    # File path for saving
+  plot = final_plot,         # The combined plot
+  width = 8,                 # Width of the output (in inches)
+  height = 8.35,               # Height of the output (in inches)
+  dpi = 300                  # Resolution (300 DPI for high quality)
+)
+
+# Print a message to confirm the save
+message("Figure saved as: ", output_path)
+```
+
 # Relate to species traits
 
 Relate the percentage of species range overlapped by MPAs to the trait space of species. 1) Use Pearson correlation tests between the axes of the trait space and MPA coverage. 2) Predict relationships from a GAM into the kernel density gridded trait space.
