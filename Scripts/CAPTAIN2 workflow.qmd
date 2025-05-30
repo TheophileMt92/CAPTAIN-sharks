@@ -299,7 +299,8 @@ ggsave(
 )
 ```
 
-# IUCN continental 0.1 budget 
+# IUCN continental 0.1 budget
+
 ```{r}
 library(here)
 library(dplyr)
@@ -427,7 +428,8 @@ ggsave(
 )
 ```
 
-# Difference maps  
+# Difference maps
+
 ```{r}
 library(here)
 library(dplyr)
@@ -668,7 +670,8 @@ all_diffs_plot <- IUCN_FUSE_plot / IUCN_EDGE2_plot / EDGE2_FUSE_plot +
 #)
 ```
 
-# Species level priorities 
+# Species level priorities
+
 ```{r}
 # Load required packages
 library(here)
@@ -878,7 +881,7 @@ if(nrow(protected_fractions) == nrow(shark_metrics)) {
 }
 ```
 
-# RES models 
+# RES models
 
 ## FUSE continental 0.1 budget
 
