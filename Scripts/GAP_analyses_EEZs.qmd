@@ -398,7 +398,7 @@ eco_map <- ggplot() +
   )
 
 # Save ecoregion map
-ggsave(here("Results", "ecoregion_NT_coverage_map.png"), eco_map, width = 12, height = 8, dpi = 300)
+ggsave(here("Outputs", "ecoregion_NT_coverage_map.png"), eco_map, width = 12, height = 8, dpi = 300)
 
 # 2. Choropleth map of EEZs
 # Join stats back to spatial data
@@ -449,7 +449,27 @@ top_eco_plot <- ggplot(head(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mea
   )
 
 # Save top ecoregions plot
-ggsave(here("Results", "top_ecoregions_NT_coverage.png"), top_eco_plot, width = 10, height = 8, dpi = 300)
+ggsave(here("Outputs", "top_ecoregions_NT_coverage.png"), top_eco_plot, width = 10, height = 8, dpi = 300)
+
+# Bottom 20 Ecoregions
+bottom_eco_plot <- ggplot(tail(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Bottom 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % Range in No-Take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save bottom ecoregions plot
+ggsave(here("Outputs", "bottom_ecoregions_NT_coverage.png"), bottom_eco_plot, width = 10, height = 8, dpi = 300)
 
 # Top 20 EEZs
 top_eez_plot <- ggplot(head(eez_stats, 20), aes(x = reorder(TERRITORY1, mean_NT_coverage), y = mean_NT_coverage)) +
@@ -1380,6 +1400,129 @@ ggsave(here::here("SES_maps_comparison.png"),
        height = 8,  # Height in inches
        dpi = 300)   # Resolution
 
+#Map it by ecoregions
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(here)
+
+# Load ecoregions shapefile
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Convert mean_ses_per_cell to sf for spatial operations
+ses_grid_sf <- mean_ses_per_cell %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+#======================
+# Calculate SES by Ecoregion
+#======================
+# Spatial join with ecoregions
+ses_grid_ecoregions <- st_join(ses_grid_sf, meow_ecos)
+
+# Calculate mean SES by ecoregion (excluding areas outside ecoregions)
+ecoregion_ses_stats <- ses_grid_ecoregions %>%
+  st_drop_geometry() %>%
+  filter(!is.na(ECOREGION)) %>%  # Exclude areas outside ecoregions
+  group_by(ECOREGION) %>%
+  summarize(
+    PROVINCE = first(PROVINCE),
+    REALM = first(REALM),
+    mean_SES = mean(mean_SES, na.rm = TRUE),
+    median_SES = median(mean_SES, na.rm = TRUE),
+    sd_SES = sd(mean_SES, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_SES))
+
+# Print summary
+cat("Top 10 Ecoregions by Mean SES:\n")
+print(head(ecoregion_ses_stats, 10))
+
+cat("Bottom 10 Ecoregions by Mean SES:\n")
+print(tail(ecoregion_ses_stats, 10))
+
+#======================
+# Create SES ecoregion map
+#======================
+# Join SES stats back to spatial data
+meow_ecos_ses_stats <- meow_ecos %>%
+  left_join(ecoregion_ses_stats, by = "ECOREGION")
+
+# Get land polygons
+land <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Plot ecoregions SES map
+ses_eco_map <- ggplot() +
+  geom_sf(data = meow_ecos_ses_stats, aes(fill = mean_SES), color = NA) +
+  geom_sf(data = land, fill = "darkgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_gradient2(
+    name = "Mean SES",
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
+    midpoint = 0,
+    na.value = "grey90",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Mean Standardized Effect Size (SES) by Marine Ecoregion",
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank()
+  )
+
+# Print and save the map
+print(ses_eco_map)
+ggsave(here("Outputs", "ecoregion_SES_map.png"), ses_eco_map, width = 12, height = 8, dpi = 300)
+
+# Top 20 Ecoregions by Mean SES
+top_ses_plot <- ggplot(head(ecoregion_ses_stats, 20), 
+                       aes(x = reorder(ECOREGION, mean_SES), y = mean_SES)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_SES - sd_SES, 
+                   ymax = mean_SES + sd_SES), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Top 20 Marine Ecoregions by Mean SES",
+    x = NULL,
+    y = "Mean SES"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Bottom 20 Ecoregions by Mean SES
+bottom_ses_plot <- ggplot(tail(ecoregion_ses_stats, 20), 
+                          aes(x = reorder(ECOREGION, mean_SES), y = mean_SES)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_errorbar(aes(ymin = mean_SES - sd_SES, 
+                   ymax = mean_SES + sd_SES), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Bottom 20 Marine Ecoregions by Mean SES",
+    x = NULL,
+    y = "Mean SES"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Print and save plots
+print(top_ses_plot)
+ggsave(here("Outputs", "top_ecoregions_SES.png"), top_ses_plot, width = 10, height = 8, dpi = 300)
+
+print(bottom_ses_plot)
+ggsave(here("Outputs", "bottom_ecoregions_SES.png"), bottom_ses_plot, width = 10, height = 8, dpi = 300)
 ```
 
 **Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs.
@@ -1624,7 +1767,7 @@ continental_plot <- ggplot() +
   geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradient2(
-    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
     midpoint = 0,
     name = "Mean SES",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
@@ -1711,7 +1854,7 @@ continental_plot_NT <- ggplot() +
   geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradient2(
-    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
     midpoint = 0,
     name = "Mean SES",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
