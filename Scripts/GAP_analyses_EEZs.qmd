@@ -107,7 +107,7 @@ print(sd(results$percentage_in_NT_MPA))
 write.csv(results, here::here("Data","species_mpa_coverage_ALL_and_NT.csv"), row.names = FALSE)
 ```
 
-# Map of mean % range covered  
+# Map of mean % range covered
 
 ```{r}
 library(ggplot2)
@@ -270,7 +270,8 @@ cat("Standard deviation:",
     sd(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
 ```
 
-# Breakdown by realm, ecoregion and EEZ 
+# Breakdown by realm, ecoregion and EEZ
+
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -832,7 +833,7 @@ stacked_bar_chart = ggplot(summary_NT, aes(x = 1, y = Percentage, fill = Represe
 
 **Key message:** \>60% of species are under-represented by the global MPA network (i.e. less protected by the current MPA network than by a random placement of MPAs).
 
-# Breakdown of under-represented species 
+# Breakdown of under-represented species
 
 ```{r}
 # Identify under-represented species (where actual coverage is less than random)
@@ -1237,17 +1238,19 @@ This measures the "shortfall" in protection for each under-represented species, 
 
 Interpretation of the Plot:
 
-1. **X-axis**: IUCN Red List status categories (from least threatened "LC" to most threatened "CR")
+1.  **X-axis**: IUCN Red List status categories (from least threatened "LC" to most threatened "CR")
 
-2. **Y-axis**: Mean protection gap (%)
+2.  **Y-axis**: Mean protection gap (%)
 
-3. **Bar colors**: Comparing protection gaps between:
-   - All MPAs (blue)
-   - No-take MPAs (dark red)
+3.  **Bar colors**: Comparing protection gaps between:
 
-4. **Key insights**:
-   - Higher bars indicate larger protection gaps (greater under-representation)
-   - The pattern across threat categories reveals whether more threatened species (VU, EN, CR) have larger or smaller protection gaps than less threatened species (LC, NT)
+    -   All MPAs (blue)
+    -   No-take MPAs (dark red)
+
+4.  **Key insights**:
+
+    -   Higher bars indicate larger protection gaps (greater under-representation)
+    -   The pattern across threat categories reveals whether more threatened species (VU, EN, CR) have larger or smaller protection gaps than less threatened species (LC, NT)
 
 Significance for Conservation:
 
@@ -1386,6 +1389,60 @@ g_ses_2 = ggplot() +
        fill = "Mean SES")
 print(g_ses_2)
 
+#Overcome the infinite values in grid cells
+# First, clean the SES values in comparison_NT
+comparison_NT <- comparison_NT %>%
+  mutate(SES_clean = case_when(
+    sd_percentage == 0 & actual_percentage == mean_percentage ~ 0,
+    sd_percentage == 0 & actual_percentage > mean_percentage ~ 3,   # Cap at +3
+    sd_percentage == 0 & actual_percentage < mean_percentage ~ -3,  # Cap at -3
+    TRUE ~ (actual_percentage - mean_percentage) / sd_percentage
+  ))
+
+# Now recalculate the combined data with cleaned SES
+combined_data_clean <- puvsp_long %>%
+  left_join(comparison_NT %>% select(species, SES_clean), by = c("species" = "species"))
+
+# Calculate mean SES per cell with cleaned values
+mean_ses_per_cell_clean <- combined_data_clean %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES_clean, na.rm = TRUE)) %>%
+  ungroup()
+
+# Check the cleaned results
+summary(mean_ses_per_cell_clean$mean_SES)
+
+g_ses_2_clean <- ggplot() +
+  geom_tile(data = mean_ses_per_cell_clean, aes(x = lon, y = lat, fill = mean_SES)) +
+  geom_sf(data = land, fill = "darkgrey", color = NA) +
+  scale_fill_gradient2(
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
+    midpoint = 0,
+    limits = c(-3, 3),  # Now this makes sense with our -3 to +3 range
+    oob = scales::squish
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = unit(3, "cm"),
+    legend.key.height = unit(0.5, "cm")
+  ) +
+  guides(
+    fill = guide_colorbar(
+      direction = "horizontal",
+      title.position = "top",
+      title.hjust = 0.5
+    )
+  ) +
+  labs(title = "Standardized Effect Size (SES) of Observed vs. Null no-take MPA Coverage",
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Mean SES")
+
+print(g_ses_2_clean)
+
 # Load the patchwork library for combining plots
 library(patchwork)
 
@@ -1413,7 +1470,7 @@ library(here)
 meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
 
 # Convert mean_ses_per_cell to sf for spatial operations
-ses_grid_sf <- mean_ses_per_cell %>%
+ses_grid_sf <- mean_ses_per_cell_clean %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
 #======================
@@ -1479,7 +1536,7 @@ ses_eco_map <- ggplot() +
 
 # Print and save the map
 print(ses_eco_map)
-ggsave(here("Outputs", "ecoregion_SES_map.png"), ses_eco_map, width = 12, height = 8, dpi = 300)
+ggsave(here("Outputs", "ecoregion_SES_map_clean.png"), ses_eco_map, width = 12, height = 8, dpi = 300)
 
 # Top 20 Ecoregions by Mean SES
 top_ses_plot <- ggplot(head(ecoregion_ses_stats, 20), 
@@ -1519,10 +1576,10 @@ bottom_ses_plot <- ggplot(tail(ecoregion_ses_stats, 20),
 
 # Print and save plots
 print(top_ses_plot)
-ggsave(here("Outputs", "top_ecoregions_SES.png"), top_ses_plot, width = 10, height = 8, dpi = 300)
+ggsave(here("Outputs", "top_ecoregions_SES_clean.png"), top_ses_plot, width = 10, height = 8, dpi = 300)
 
 print(bottom_ses_plot)
-ggsave(here("Outputs", "bottom_ecoregions_SES.png"), bottom_ses_plot, width = 10, height = 8, dpi = 300)
+ggsave(here("Outputs", "bottom_ecoregions_SES_clean.png"), bottom_ses_plot, width = 10, height = 8, dpi = 300)
 ```
 
 **Key message:** Northern Pacific, Northern Atlantic, Southern Pacific, Southern Atlantic and global coastal/continental sharks and rays are less protected by MPAs than expected under a random placement of MPAs. This is even more the case for no-take MPAs.
@@ -1665,7 +1722,7 @@ ggsave(here::here("SES_maps_comparison.png"),
        bg = "white")
 ```
 
-# GAP analyses maps, divide between continental waters and highseas 
+# GAP analyses maps, divide between continental waters and highseas
 
 ```{r}
 # GAP analyses maps: divide between continental waters and high seas using raster approach
@@ -1813,16 +1870,23 @@ ggsave(here::here("outputs","SES_map_highseas_ALL.png"),
        bg = "white")
 
 # Now repeat for No-take MPAs
-# Calculate SES for No-take
+# Calculate clean SES for No-take (replacing the original SES calculation)
 comparison_NT <- comparison_NT %>%
-  mutate(SES = (actual_percentage - mean_percentage) / sd_percentage)
+  mutate(SES_clean = case_when(
+    sd_percentage == 0 & actual_percentage == mean_percentage ~ 0,
+    sd_percentage == 0 & actual_percentage > mean_percentage ~ 3,   # Cap at +3
+    sd_percentage == 0 & actual_percentage < mean_percentage ~ -3,  # Cap at -3
+    TRUE ~ (actual_percentage - mean_percentage) / sd_percentage
+  ))
 
+# Use the cleaned SES values in the combined data
 combined_data_NT <- puvsp_long %>%
-  left_join(comparison_NT, by = c("species" = "species"))
+  left_join(comparison_NT %>% select(species, SES_clean), by = c("species" = "species"))
 
+# Calculate mean SES per cell using cleaned values
 mean_ses_per_cell_NT <- combined_data_NT %>%
   group_by(id, lon, lat) %>%
-  summarise(mean_SES = mean(SES, na.rm = TRUE)) %>%
+  summarise(mean_SES = mean(SES_clean, na.rm = TRUE)) %>%
   ungroup()
 
 # Convert to terra SpatVector for extraction
@@ -1856,6 +1920,8 @@ continental_plot_NT <- ggplot() +
   scale_color_gradient2(
     low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
     midpoint = 0,
+    limits = c(-3, 3),  # Set limits to match our cleaned SES range
+    oob = scales::squish,  # Handle any out-of-bounds values
     name = "Mean SES",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
@@ -1872,8 +1938,10 @@ high_seas_plot_NT <- ggplot() +
   geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_gradient2(
-    low = "#2166ac", mid = "#f0f0f0", high = "#b2182b", 
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
     midpoint = 0,
+    limits = c(-3, 3),  # Set limits to match our cleaned SES range
+    oob = scales::squish,  # Handle any out-of-bounds values
     name = "Mean SES",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
@@ -1892,7 +1960,7 @@ ggsave(here::here("outputs","SES_map_continental_NT.png"),
        dpi = 300,
        bg = "white")
 
-ggsave(here::here("outputs","SES_map_highseas_NT.png"), 
+ggsave(here::here("outputs","SES_map_highseas_NT_clean.png"), 
        high_seas_plot_NT,
        width = 10,
        height = 6,
@@ -1900,7 +1968,8 @@ ggsave(here::here("outputs","SES_map_highseas_NT.png"),
        bg = "white")
 ```
 
-# Grid of three GAP analysis plots for manuscript 
+# Grid of three GAP analysis plots for manuscript
+
 ```{r}
 
 library(ggpubr)
@@ -1938,7 +2007,7 @@ updated_grid_plot <- ggarrange(
 
 # Save the updated grid plot (A and C)
 ggsave(
-  filename = here::here("outputs", "updated_combined_plot_GAP_analysis.png"),
+  filename = here::here("outputs", "updated_combined_plot_GAP_analysis_clean.png"),
   plot = updated_grid_plot,
   width = 8.5,
   height = 9,                        # Adjust height to match the new layout
@@ -2889,7 +2958,7 @@ ggsave(here::here("combined_violin_plots_six_plots.png"), combined_plot, width =
 
 ```
 
-### Ridgeline chart : six charts 
+### Ridgeline chart : six charts
 
 ```{r}
 # Load required packages
@@ -3150,20 +3219,19 @@ Comparing Protection Gap with Direct Protection Percentages
 
 Two Different Analytical Approaches:
 
-1. **Direct Protection Analysis** (your previous work):
-   - Compared the actual percentage of range protected for each species against their IUCN status
-   - Found that threatened species (VU, EN, CR) had lower percentages of their ranges protected than non-threatened species (LC, NT)
-   - Measures the absolute level of protection
-
-2. **Protection Gap Analysis** (current work):
-   - Compares the difference between expected random protection and actual protection
-   - Measures whether species are receiving less protection than would be expected by chance
-   - Accounts for factors that might make some species naturally harder to protect
+1.  **Direct Protection Analysis** (your previous work):
+    -   Compared the actual percentage of range protected for each species against their IUCN status
+    -   Found that threatened species (VU, EN, CR) had lower percentages of their ranges protected than non-threatened species (LC, NT)
+    -   Measures the absolute level of protection
+2.  **Protection Gap Analysis** (current work):
+    -   Compares the difference between expected random protection and actual protection
+    -   Measures whether species are receiving less protection than would be expected by chance
+    -   Accounts for factors that might make some species naturally harder to protect
 
 Key Differences:
 
-- **Direct Protection** answers: "How much of each species' range is protected?"
-- **Protection Gap** answers: "Are some species disproportionately under-protected relative to random expectation?"
+-   **Direct Protection** answers: "How much of each species' range is protected?"
+-   **Protection Gap** answers: "Are some species disproportionately under-protected relative to random expectation?"
 
 The protection gap approach controls for factors like species' range sizes, geographic locations, and overlap with human activities that might affect their likelihood of being included in MPAs.
 
@@ -3171,9 +3239,9 @@ Which is More Relevant?
 
 **Both analyses are valuable and complementary:**
 
-1. **Direct Protection** is more intuitive and directly relevant to conservation targets (e.g., "30x30" initiatives aiming to protect 30% of the ocean by 2030).
+1.  **Direct Protection** is more intuitive and directly relevant to conservation targets (e.g., "30x30" initiatives aiming to protect 30% of the ocean by 2030).
 
-2. **Protection Gap** provides stronger evidence of systematic bias in conservation planning, as it accounts for the "null expectation" of protection if MPAs were established without regard to species identity.
+2.  **Protection Gap** provides stronger evidence of systematic bias in conservation planning, as it accounts for the "null expectation" of protection if MPAs were established without regard to species identity.
 
 Together, these analyses tell a more complete story: threatened sharks not only have lower absolute protection (direct analysis) but are also receiving less protection than would be expected by random chance (protection gap).
 
@@ -3185,9 +3253,9 @@ Key Finding: Contradictory Protection Patterns
 
 Our two analytical approaches revealed an important paradox in shark conservation:
 
-1. **Direct Protection Analysis** showed that threatened species (VU, EN, CR) have **less absolute protection** than non-threatened species.
+1.  **Direct Protection Analysis** showed that threatened species (VU, EN, CR) have **less absolute protection** than non-threatened species.
 
-2. **Protection Gap Analysis** suggests that threatened species have **smaller protection gaps** than non-threatened species.
+2.  **Protection Gap Analysis** suggests that threatened species have **smaller protection gaps** than non-threatened species.
 
 What This Contradiction Means:
 
@@ -3197,25 +3265,23 @@ This apparent contradiction reveals a nuanced conservation situation:
 
 Possible Interpretations:
 
-1. **Intentional Conservation Targeting:**
-   - Conservation efforts may be specifically targeting threatened sharks within their limited ranges
-   - Even though the absolute protection is lower, the placement of MPAs may be more strategic for threatened species
-
-2. **Range Size Effect:**
-   - Threatened species often have smaller or more restricted ranges
-   - Smaller ranges might be easier to protect at higher-than-random rates, even if the absolute area protected remains small
-
-3. **Geographic Concentration:**
-   - Threatened sharks may be concentrated in regions where MPAs are more common
-   - This would result in better-than-random representation despite lower total protection
+1.  **Intentional Conservation Targeting:**
+    -   Conservation efforts may be specifically targeting threatened sharks within their limited ranges
+    -   Even though the absolute protection is lower, the placement of MPAs may be more strategic for threatened species
+2.  **Range Size Effect:**
+    -   Threatened species often have smaller or more restricted ranges
+    -   Smaller ranges might be easier to protect at higher-than-random rates, even if the absolute area protected remains small
+3.  **Geographic Concentration:**
+    -   Threatened sharks may be concentrated in regions where MPAs are more common
+    -   This would result in better-than-random representation despite lower total protection
 
 Conservation Implications:
 
 This complex pattern suggests that:
 
-1. Current protection is insufficient in absolute terms for threatened species
-2. Existing conservation efforts show some evidence of appropriate targeting
-3. Expanding protection should build on this targeting while addressing the overall protection shortfall
+1.  Current protection is insufficient in absolute terms for threatened species
+2.  Existing conservation efforts show some evidence of appropriate targeting
+3.  Expanding protection should build on this targeting while addressing the overall protection shortfall
 
 This highlights the importance of using multiple analytical approaches to fully understand conservation patterns and avoid oversimplified conclusions about protection effectiveness.
 
@@ -4763,7 +4829,6 @@ kable_table
 **Key message:** There is significant negative relationship between EDGE2 and FUSE with the % of range protected. Species with high FUSE or high EDGE2 tend to be less protected than those with low EDGE2 or FUSE.
 
 # Relate to Biogeographical Realms, Ecoregions and Nations
-
 
 ```{r}
 #Realms 
