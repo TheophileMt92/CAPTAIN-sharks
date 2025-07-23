@@ -883,7 +883,7 @@ if(nrow(protected_fractions) == nrow(shark_metrics)) {
 
 # Manuscript maps
 
-## Individual maps
+### Individual maps
 
 ```{r}
 CAPTAIN2_EDGE2_msmap <- ggplot() +
@@ -969,7 +969,7 @@ ggsave(here::here("grid1_maps_continental_2ndrun.png"), grid1, width = 8, height
 
 ```
 
-## Difference maps
+### Difference maps
 
 ```{r}
 # 1. IUCN - FUSE Difference Map
@@ -1306,4 +1306,431 @@ total_high_priority <- sum(congruence_summary[names(congruence_summary) != "No h
 congruence_percentages <- round(congruence_summary / total_high_priority * 100, 2)
 cat("\nPercentages of high priority areas:\n")
 print(congruence_percentages[names(congruence_percentages) != "No high priority"])
+```
+
+## Relationship with fishing effort : bar plots per country 
+
+```{r}
+library(here)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(raster)
+library(tidyr)
+library(ggrepel)
+library(ggsci)   # For nice color palettes
+
+# Read all priority data
+CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates50.rds"))
+CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_res_full_results_averaged_budget0.1_replicates50.rds"))
+CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates50.rds"))
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
+# Load marine ecoregion shapefile
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Load raster to get coordinate system
+raster_file <- here::here("Data", "tif files continental", "Psammobatis_parvacauda.tif")
+r <- raster(raster_file)
+
+# Create coordinates for all grid cells
+coords <- as.data.frame(coordinates(r))
+names(coords) <- c("Longitude", "Latitude")
+coords$PUID <- 1:nrow(coords)
+
+#---------------------- FISHING DATA PROCESSING ----------------------#
+
+# Convert aggregated_data to an sf object
+fishing_sf <- aggregated_data %>%
+  filter(!is.na(lon_05deg), !is.na(lat_05deg), !is.na(predicted_fishing_hours)) %>%
+  st_as_sf(coords = c("lon_05deg", "lat_05deg"), crs = 4326)
+
+# Make sure CRS matches
+st_crs(fishing_sf) <- st_crs(meow_ecos)
+
+# Process fishing data for ECOREGIONS
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+
+ecoregion_fishing_stats <- fishing_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_fishing_hours = mean(predicted_fishing_hours, na.rm = TRUE),
+    median_fishing_hours = median(predicted_fishing_hours, na.rm = TRUE),
+    fishing_q05 = quantile(predicted_fishing_hours, 0.05, na.rm = TRUE),
+    fishing_q95 = quantile(predicted_fishing_hours, 0.95, na.rm = TRUE),
+    fishing_cells = n(),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_fishing_hours))
+
+#---------------------- PRIORITY DATA PROCESSING ----------------------#
+
+# Combine all priority data with coordinates
+combined_data <- CAPTAIN2_EDGE2_data %>%
+  rename(Priority_EDGE2 = Priority) %>%
+  left_join(CAPTAIN2_FUSE_data %>% dplyr::select(PUID, Priority) %>% rename(Priority_FUSE = Priority), by = "PUID") %>%
+  left_join(CAPTAIN2_IUCN_data %>% dplyr::select(PUID, Priority) %>% rename(Priority_IUCN = Priority), by = "PUID") %>%
+  left_join(coords, by = "PUID")
+
+# Convert to sf object for each index
+iucn_sf <- combined_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority_IUCN)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+fuse_sf <- combined_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority_FUSE)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+edge2_sf <- combined_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude), !is.na(Priority_EDGE2)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Make sure CRS matches
+st_crs(iucn_sf) <- st_crs(meow_ecos)
+st_crs(fuse_sf) <- st_crs(meow_ecos)
+st_crs(edge2_sf) <- st_crs(meow_ecos)
+
+# Process priority data for ECOREGIONS - IUCN
+iucn_with_ecoregion <- st_join(iucn_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+ecoregion_iucn_stats <- iucn_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority_IUCN, na.rm = TRUE),
+    median_priority = median(Priority_IUCN, na.rm = TRUE),
+    priority_q05 = quantile(Priority_IUCN, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority_IUCN, 0.95, na.rm = TRUE),
+    priority_cells = n(),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+# Process priority data for ECOREGIONS - FUSE
+fuse_with_ecoregion <- st_join(fuse_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+ecoregion_fuse_stats <- fuse_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority_FUSE, na.rm = TRUE),
+    median_priority = median(Priority_FUSE, na.rm = TRUE),
+    priority_q05 = quantile(Priority_FUSE, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority_FUSE, 0.95, na.rm = TRUE),
+    priority_cells = n(),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+# Process priority data for ECOREGIONS - EDGE2
+edge2_with_ecoregion <- st_join(edge2_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+ecoregion_edge2_stats <- edge2_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    mean_priority = mean(Priority_EDGE2, na.rm = TRUE),
+    median_priority = median(Priority_EDGE2, na.rm = TRUE),
+    priority_q05 = quantile(Priority_EDGE2, 0.05, na.rm = TRUE),
+    priority_q95 = quantile(Priority_EDGE2, 0.95, na.rm = TRUE),
+    priority_cells = n(),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(mean_priority))
+
+#---------------------- MERGE DATASETS FOR SCATTERPLOTS ----------------------#
+
+# Merge ECOREGION data for each index
+ecoregion_combined_iucn <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_iucn_stats, 
+  by = c("ECOREGION", "REALM")) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+ecoregion_combined_fuse <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_fuse_stats, 
+  by = c("ECOREGION", "REALM")) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+ecoregion_combined_edge2 <- inner_join(
+  ecoregion_fishing_stats, 
+  ecoregion_edge2_stats, 
+  by = c("ECOREGION", "REALM")) %>%
+  mutate(cell_ratio = fishing_cells / priority_cells)
+
+#---------------------- CREATE ECOREGION SCATTERPLOTS ----------------------#
+
+# IUCN - Get top 5 fishing and top 5 priority ecoregions
+top_fishing_iucn <- ecoregion_combined_iucn %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+top_priority_iucn <- ecoregion_combined_iucn %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+ecoregions_to_label_iucn <- unique(c(top_fishing_iucn, top_priority_iucn))
+label_data_iucn <- ecoregion_combined_iucn %>%
+  filter(ECOREGION %in% ecoregions_to_label_iucn)
+
+# Create IUCN plot
+iucn_ecoregion_plot <- ggplot(ecoregion_combined_iucn,
+                             aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_iucn,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (IUCN)",
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (IUCN)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# FUSE - Get top 5 fishing and top 5 priority ecoregions
+top_fishing_fuse <- ecoregion_combined_fuse %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+top_priority_fuse <- ecoregion_combined_fuse %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+ecoregions_to_label_fuse <- unique(c(top_fishing_fuse, top_priority_fuse))
+label_data_fuse <- ecoregion_combined_fuse %>%
+  filter(ECOREGION %in% ecoregions_to_label_fuse)
+
+# Create FUSE plot
+fuse_ecoregion_plot <- ggplot(ecoregion_combined_fuse,
+                             aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_fuse,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (FUSE)",
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (FUSE)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# EDGE2 - Get top 5 fishing and top 5 priority ecoregions
+top_fishing_edge2 <- ecoregion_combined_edge2 %>%
+  arrange(desc(mean_fishing_hours)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+top_priority_edge2 <- ecoregion_combined_edge2 %>%
+  arrange(desc(mean_priority)) %>%
+  head(5) %>%
+  pull(ECOREGION)
+
+ecoregions_to_label_edge2 <- unique(c(top_fishing_edge2, top_priority_edge2))
+label_data_edge2 <- ecoregion_combined_edge2 %>%
+  filter(ECOREGION %in% ecoregions_to_label_edge2)
+
+# Create EDGE2 plot
+edge2_ecoregion_plot <- ggplot(ecoregion_combined_edge2,
+                              aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_edge2,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
+       subtitle = "By Ecoregion (EDGE2)",
+       x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority (EDGE2)") +
+  theme_minimal() +
+  guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
+
+# Create the plots without titles and legends (we'll use a shared legend)
+
+# IUCN Plot
+iucn_ecoregion_plot <- ggplot(ecoregion_combined_iucn,
+                             aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_iucn,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Remove legend from individual plots
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  guides(
+    color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
+    size = guide_legend(title = "Number of Cells")
+  )
+
+# FUSE Plot
+fuse_ecoregion_plot <- ggplot(ecoregion_combined_fuse,
+                             aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_fuse,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Remove legend from individual plots
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  guides(
+    color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
+    size = guide_legend(title = "Number of Cells")
+  )
+
+# EDGE2 Plot
+edge2_ecoregion_plot <- ggplot(ecoregion_combined_edge2,
+                              aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  geom_label_repel(
+    data = label_data_edge2,
+    aes(label = ECOREGION),
+    size = 3,
+    max.overlaps = 10,
+    box.padding = 0.5
+  ) +
+  scale_x_log10() +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  labs(x = "Mean Fishing Hours (log scale)",
+       y = "Mean Conservation Priority") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Remove legend from individual plots
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  guides(
+    color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
+    size = guide_legend(title = "Number of Cells")
+  )
+
+# Create one plot with legend for extracting the common legend
+legend_plot <- ggplot(ecoregion_combined_iucn,
+                     aes(x = mean_fishing_hours, y = mean_priority)) +
+  geom_point(aes(size = fishing_cells, color = REALM), alpha = 0.4) +
+  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
+                               "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
+  guides(
+    color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
+    size = guide_legend(title = "Number of Cells")
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+# Create a blank plot for the legend position
+blank_plot <- ggplot() + theme_void()
+
+# Extract the legend as a separate grob
+legend_grob <- get_legend(legend_plot)
+
+# Use ggpubr::ggarrange to combine plots in a 2x2 grid with legend in position 4
+library(ggpubr)
+combined_ecoregion_plots <- ggarrange(
+  iucn_ecoregion_plot, fuse_ecoregion_plot, 
+  edge2_ecoregion_plot, as_ggplot(legend_grob),
+  labels = c("(A)", "(B)", "(C)", ""),  # No label for legend position
+  ncol = 2, nrow = 2
+)
+
+# Ensure white background for the entire combined plot
+combined_ecoregion_plots <- combined_ecoregion_plots + 
+  theme(plot.background = element_rect(fill = "white", color = NA))
+
+# Print the combined plot
+print(combined_ecoregion_plots)
+
+# Save the plot with adjusted dimensions for 2x2 layout and explicit white background
+ggsave(here::here("outputs", "ecoregion_fishing_priority_relationship.png"), 
+       combined_ecoregion_plots, 
+       width = 12, height = 10, dpi = 300, bg = "white")
+
+# Print summary statistics
+cat("Summary of ecoregion-level analysis:\n")
+cat("Ecoregions analyzed - IUCN:", nrow(ecoregion_combined_iucn), "\n")
+cat("Ecoregions analyzed - FUSE:", nrow(ecoregion_combined_fuse), "\n")
+cat("Ecoregions analyzed - EDGE2:", nrow(ecoregion_combined_edge2), "\n\n")
+
+# Show labeled ecoregions for each index
+cat("Ecoregions labeled in IUCN plot:\n")
+print(label_data_iucn %>% dplyr::select(ECOREGION, REALM, mean_fishing_hours, mean_priority) %>% arrange(desc(mean_priority)))
+
+cat("\nEcoregions labeled in FUSE plot:\n")
+print(label_data_fuse %>% dplyr::select(ECOREGION, REALM, mean_fishing_hours, mean_priority) %>% arrange(desc(mean_priority)))
+
+cat("\nEcoregions labeled in EDGE2 plot:\n")
+print(label_data_edge2 %>% dplyr::select(ECOREGION, REALM, mean_fishing_hours, mean_priority) %>% arrange(desc(mean_priority)))
+
+# Optional: Create individual plots if needed
+# print(iucn_ecoregion_plot)
+# print(fuse_ecoregion_plot) 
+# print(edge2_ecoregion_plot)
+
+# The main combined plot is printed above
+
 ```
