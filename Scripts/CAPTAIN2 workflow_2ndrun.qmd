@@ -1687,7 +1687,7 @@ legend_plot <- ggplot(ecoregion_combined_iucn,
 blank_plot <- ggplot() + theme_void()
 
 # Extract the legend as a separate grob
-legend_grob <- get_legend(legend_plot)
+legend_grob <- cowplot::get_legend(legend_plot)
 
 # Use ggpubr::ggarrange to combine plots in a 2x2 grid with legend in position 4
 library(ggpubr)
@@ -1734,3 +1734,513 @@ print(label_data_edge2 %>% dplyr::select(ECOREGION, REALM, mean_fishing_hours, m
 # The main combined plot is printed above
 
 ```
+
+## Maps of SR, FUn and EDGE2  
+
+```{r}
+
+# Sepcies richness ----
+# Load required libraries
+library(here)
+library(terra)
+library(ggplot2)
+library(viridis)
+library(sf)
+library(rnaturalearth)
+library(smoothr)
+
+# Set the path to your raster files
+raster_path <- here("Data", "tif files continental")
+
+# Get list of all TIF files in the directory
+tif_files <- list.files(raster_path, pattern = "\\.tif$", full.names = TRUE)
+
+# Check if files were found
+if(length(tif_files) == 0) {
+  stop("No TIF files found in the specified directory")
+}
+
+print(paste("Found", length(tif_files), "TIF files"))
+
+# Read all rasters into a SpatRaster stack
+species_rasters <- rast(tif_files)
+
+# Calculate species richness by summing across all layers
+# This assumes presence = 1, absence = 0 or NA
+species_richness <- sum(species_rasters, na.rm = TRUE)
+
+# Name the layer
+names(species_richness) <- "Species_Richness"
+
+# Create a basic plot
+#plot(species_richness, 
+#     main = "Species Richness Map",
+#     col = viridis(100))
+
+# Alternative: Create a ggplot map with McBryde-Thomas 2 projection
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Project the species richness raster to McBryde-Thomas 2
+species_richness_projected <- project(species_richness, mcbryde_thomas_2)
+
+# Convert to dataframe for ggplot
+richness_df <- as.data.frame(species_richness_projected, xy = TRUE)
+
+# Remove NA values for cleaner plotting
+richness_df <- richness_df[!is.na(richness_df$Species_Richness), ]
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Convert richness data to sf points for proper clipping
+richness_sf <- st_as_sf(richness_df, coords = c("x", "y"), crs = mcbryde_thomas_2)
+
+# Clip the richness data to the globe boundary
+richness_clipped <- st_intersection(richness_sf, globe_border)
+
+# Extract coordinates back for plotting
+richness_clipped_coords <- st_coordinates(richness_clipped)
+richness_final <- data.frame(
+  x = richness_clipped_coords[,1],
+  y = richness_clipped_coords[,2],
+  Species_Richness = richness_clipped$Species_Richness
+)
+
+# Create ggplot map
+species_richness_plot <- ggplot() +
+  geom_tile(data = richness_final, aes(x = x, y = y, fill = Species_Richness)) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_fill_viridis_c(
+    name = "Species\nRichness",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf(crs = mcbryde_thomas_2, expand = FALSE) +
+  labs(title = "Global Species Richness Map",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display the plot
+print(species_richness_plot)
+
+# Richness of threatened species, top 25% FUSE and top 25% EDGE2 ----
+
+# Load required libraries
+library(here)
+library(terra)
+library(ggplot2)
+library(viridis)
+library(sf)
+library(rnaturalearth)
+library(smoothr)
+library(dplyr)
+
+# Load the conservation metrics dataset
+conservation_data <- read.csv(here("Data", "My dataframes", "continental_shark_conservation_metrics_10_harmonised_IUCN_csv.csv"))
+
+# Filter for threatened species (IUCN values of 0.5, 0.75, or 1)
+threatened_species <- conservation_data %>%
+  filter(IUCN %in% c(0.5, 0.75, 1)) %>%
+  pull(Species.name)
+
+# Get top 25% FUSE scoring species by rank (not by threshold)
+n_species <- nrow(conservation_data)
+top_25_percent_count <- ceiling(n_species * 0.25)
+
+top_fuse_species <- conservation_data %>%
+  arrange(desc(FUSE)) %>%
+  slice_head(n = top_25_percent_count) %>%
+  pull(Species.name)
+
+# Get top 25% EDGE2 scoring species by rank
+top_edge2_species <- conservation_data %>%
+  arrange(desc(EDGE2)) %>%
+  slice_head(n = top_25_percent_count) %>%
+  pull(Species.name)
+
+# Get the actual threshold values for reporting
+fuse_threshold <- conservation_data %>%
+  arrange(desc(FUSE)) %>%
+  slice(top_25_percent_count) %>%
+  pull(FUSE)
+
+edge2_threshold <- conservation_data %>%
+  arrange(desc(EDGE2)) %>%
+  slice(top_25_percent_count) %>%
+  pull(EDGE2)
+
+print(paste("Total species in dataset:", n_species))
+print(paste("Top 25% count:", top_25_percent_count))
+print(paste("Found", length(threatened_species), "threatened species"))
+print(paste("Found", length(top_fuse_species), "top 25% FUSE species (threshold:", round(fuse_threshold, 4), ")"))
+print(paste("Found", length(top_edge2_species), "top 25% EDGE2 species (threshold:", round(edge2_threshold, 4), ")"))
+
+# Set the path to your raster files
+raster_path <- here("Data", "tif files continental")
+
+# Get list of all TIF files in the directory
+all_tif_files <- list.files(raster_path, pattern = "\\.tif$", full.names = TRUE)
+
+# Extract species names from file names (assuming filename format includes species name)
+# You may need to adjust this pattern based on your actual file naming convention
+file_species_names <- basename(all_tif_files)
+file_species_names <- gsub("\\.tif$", "", file_species_names)
+
+# Function to find matching raster files for a species list
+find_matching_files <- function(species_list, all_files) {
+  matching_files <- c()
+  for(species in species_list) {
+    # Create pattern to match species name in filename (handles spaces and underscores)
+    species_pattern <- gsub(" ", "[_ ]", species)
+    matches <- all_files[grepl(species_pattern, basename(all_files), ignore.case = TRUE)]
+    matching_files <- c(matching_files, matches)
+  }
+  return(unique(matching_files))
+}
+
+# Find matching files for each species group
+threatened_files <- find_matching_files(threatened_species, all_tif_files)
+fuse_files <- find_matching_files(top_fuse_species, all_tif_files)
+edge2_files <- find_matching_files(top_edge2_species, all_tif_files)
+
+print(paste("Found", length(threatened_files), "raster files for threatened species"))
+print(paste("Found", length(fuse_files), "raster files for top FUSE species"))
+print(paste("Found", length(edge2_files), "raster files for top EDGE2 species"))
+
+# Check if files were found
+if(length(threatened_files) == 0) {
+  stop("No matching TIF files found for threatened species. Please check file naming convention.")
+}
+
+# Read rasters and calculate richness for each group
+# Threatened species
+threatened_rasters <- rast(threatened_files)
+threatened_richness <- sum(threatened_rasters, na.rm = TRUE)
+names(threatened_richness) <- "Threatened_Species_Richness"
+
+# Top FUSE species
+fuse_rasters <- rast(fuse_files)
+fuse_richness <- sum(fuse_rasters, na.rm = TRUE)
+names(fuse_richness) <- "Top_FUSE_Richness"
+
+# Top EDGE2 species
+edge2_rasters <- rast(edge2_files)
+edge2_richness <- sum(edge2_rasters, na.rm = TRUE)
+names(edge2_richness) <- "Top_EDGE2_Richness"
+
+# Create basic plots for all three metrics
+#plot(threatened_richness, 
+#     main = "Threatened Species Richness Map",
+#     col = viridis(100))
+
+#plot(fuse_richness, 
+#     main = "Top 25% FUSE Species Richness Map",
+#     col = viridis(100))
+
+#plot(edge2_richness, 
+#     main = "Top 25% EDGE2 Species Richness Map",
+#     col = viridis(100))
+
+# Function to create projected richness map
+create_richness_map <- function(richness_raster, title, subtitle, legend_name) {
+  # Project the richness raster to McBryde-Thomas 2
+  richness_projected <- project(richness_raster, mcbryde_thomas_2)
+  
+  # Convert to dataframe for ggplot
+  richness_df <- as.data.frame(richness_projected, xy = TRUE)
+  colnames(richness_df)[3] <- "richness_value"
+  
+  # Remove NA values for cleaner plotting
+  richness_df <- richness_df[!is.na(richness_df$richness_value), ]
+  
+  # Convert richness data to sf points for proper clipping
+  richness_sf <- st_as_sf(richness_df, coords = c("x", "y"), crs = mcbryde_thomas_2)
+  
+  # Clip the richness data to the globe boundary
+  richness_clipped <- st_intersection(richness_sf, globe_border)
+  
+  # Extract coordinates back for plotting
+  richness_clipped_coords <- st_coordinates(richness_clipped)
+  richness_final <- data.frame(
+    x = richness_clipped_coords[,1],
+    y = richness_clipped_coords[,2],
+    richness_value = richness_clipped$richness_value
+  )
+  
+  # Create ggplot map
+  richness_plot <- ggplot() +
+    geom_tile(data = richness_final, aes(x = x, y = y, fill = richness_value)) +
+    geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+    geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+    scale_fill_viridis_c(
+      name = legend_name,
+      guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                           title.position = "top", title.hjust = 0.5)
+    ) +
+    coord_sf(crs = mcbryde_thomas_2, expand = FALSE) +
+    labs(title = title,
+         subtitle = subtitle,
+         x = NULL, y = NULL) +
+    my_theme
+  
+  return(richness_plot)
+}
+
+# Create maps for all three metrics
+threatened_richness_plot <- create_richness_map(
+  threatened_richness, 
+  "Global Threatened Species Richness Map",
+  "Species with IUCN threat levels 0.5, 0.75, or 1.0",
+  "Threatened\nSpecies Richness"
+)
+
+fuse_richness_plot <- create_richness_map(
+  fuse_richness,
+  "Global Top 25% FUSE Species Richness Map", 
+  paste("Species in top quartile of FUSE scores (≥", round(fuse_threshold, 4), ")"),
+  "Top FUSE\nSpecies Richness"
+)
+
+edge2_richness_plot <- create_richness_map(
+  edge2_richness,
+  "Global Top 25% EDGE2 Species Richness Map",
+  paste("Species in top quartile of EDGE2 scores (≥", round(edge2_threshold, 4), ")"),
+  "Top EDGE2\nSpecies Richness"
+)
+
+# Display all plots
+print(threatened_richness_plot)
+print(fuse_richness_plot)
+print(edge2_richness_plot)
+
+```
+
+## Differences between priority and normal richness maps   
+
+```{r}
+create_comparison_maps <- function(captain2_data, richness_raster, priority_threshold = 0.85, 
+                                   comparison_name = "Comparison") {
+  
+  # Count grid cells with CAPTAIN2 priority > threshold
+  high_priority_cells <- sum(captain2_data$Priority > priority_threshold, na.rm = TRUE)
+  
+  print(paste("CAPTAIN2", comparison_name, "cells with priority >", priority_threshold, ":", high_priority_cells))
+  
+  # Get the same number of top richness cells
+  richness_values <- values(richness_raster, na.rm = TRUE)
+  richness_threshold <- quantile(richness_values, 1 - (high_priority_cells / length(richness_values)), na.rm = TRUE)
+  
+  print(paste("Richness threshold for top", high_priority_cells, "cells:", round(richness_threshold, 2)))
+  
+  # Create binary rasters for comparison
+  # CAPTAIN2 binary (1 = high priority, 0 = other)
+  captain2_binary <- captain2_data
+  captain2_binary$Binary_Priority <- ifelse(captain2_data$Priority > priority_threshold, 1, 0)
+  
+  # Richness binary (1 = top cells, 0 = other)  
+  richness_binary <- richness_raster
+  values(richness_binary) <- ifelse(values(richness_raster) >= richness_threshold, 1, 0)
+  
+  # Convert CAPTAIN2 data to sf if it's not already
+  if(!inherits(captain2_binary, "sf")) {
+    # Assuming captain2_data has Longitude and Latitude columns
+    captain2_binary_sf <- st_as_sf(captain2_binary, 
+                                   coords = c("Longitude", "Latitude"), 
+                                   crs = 4326)
+  } else {
+    captain2_binary_sf <- captain2_binary
+  }
+  
+  # Transform to match the richness raster CRS
+  captain2_binary_sf <- st_transform(captain2_binary_sf, crs = crs(richness_binary))
+  
+  # Convert to raster using terra::rasterize with explicit method
+  captain2_raster <- rasterize(captain2_binary_sf, richness_binary, 
+                               field = "Binary_Priority", 
+                               fun = "max",  # Use max to avoid averaging
+                               background = 0)  # Set background to 0
+  
+  # Ensure we only have 0s and 1s
+  captain2_raster[captain2_raster > 0] <- 1
+  
+  # Define the McBryde-Thomas 2 projection
+  mcbryde_thomas_2 <- "+proj=mbt_s"
+  
+  # Calculate difference and debug each step
+  difference_raster <- captain2_raster - richness_binary
+  print(paste("Difference raster total cells:", ncell(difference_raster)))
+  print(paste("Difference raster non-NA cells:", sum(!is.na(values(difference_raster)))))
+  
+  # Create a mask for cells where at least one method has priority (value = 1)
+  priority_mask <- (captain2_raster == 1) | (richness_binary == 1)
+  print(paste("Priority mask TRUE cells:", sum(values(priority_mask), na.rm = TRUE)))
+  
+  # Apply the mask to keep only priority cells
+  difference_raster[!priority_mask] <- NA
+  print(paste("After masking, non-NA cells:", sum(!is.na(values(difference_raster)))))
+  
+  # Project difference raster
+  difference_projected <- project(difference_raster, mcbryde_thomas_2)
+  print(paste("After projection, non-NA cells:", sum(!is.na(values(difference_projected)))))
+  
+  # Convert to dataframe and clip to globe
+  diff_df <- as.data.frame(difference_projected, xy = TRUE)
+  colnames(diff_df)[3] <- "difference"
+  diff_df <- diff_df[!is.na(diff_df$difference), ]
+  print(paste("After df conversion, rows:", nrow(diff_df)))
+  
+  # Convert to sf and clip
+  diff_sf <- st_as_sf(diff_df, coords = c("x", "y"), crs = mcbryde_thomas_2)
+  print(paste("SF object rows:", nrow(diff_sf)))
+  
+  # Create world map and globe border for this function
+  world <- ne_countries(scale = "medium", returnclass = "sf")
+  world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+  
+  # Create the globe bounding box and border
+  globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                      c(180, 90), c(180, -90), c(-180, -90))
+  globe_border <- st_polygon(list(globe_bbox)) %>%
+    st_sfc(crs = 4326) %>%
+    st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+    smoothr::densify(max_distance = 0.5) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  # Create base theme
+  my_theme <- theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.box = "vertical",
+      legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+      legend.title = element_text(margin = margin(b = 10)),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.grid = element_blank()
+    )
+  
+  diff_clipped <- st_intersection(diff_sf, globe_border)
+  print(paste("After globe clipping, rows:", nrow(diff_clipped)))
+  
+  # Extract coordinates
+  diff_coords <- st_coordinates(diff_clipped)
+  diff_final <- data.frame(
+    x = diff_coords[,1],
+    y = diff_coords[,2],
+    difference = diff_clipped$difference
+  )
+  print(paste("Final data rows:", nrow(diff_final)))
+  
+  # Create difference map
+  diff_plot <- ggplot() +
+    geom_tile(data = diff_final, aes(x = x, y = y, fill = factor(difference))) +
+    geom_sf(data = world_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+    geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+    scale_fill_manual(
+      values = c("-1" = "red", "0" = "black", "1" = "blue"),
+      labels = c("-1" = "Only Richness", "0" = "Agreement", "1" = "Only CAPTAIN2"),
+      name = "Priority\nDifference",
+      guide = guide_legend(title.position = "top", title.hjust = 0.5)
+    ) +
+    coord_sf(crs = mcbryde_thomas_2, expand = FALSE) +
+    labs(title = paste("Priority Comparison:", comparison_name),
+         subtitle = paste("CAPTAIN2 vs Simple Richness (", high_priority_cells, "top cells each)"),
+         x = NULL, y = NULL) +
+    my_theme +
+    theme(legend.position = "bottom")
+  
+  # Calculate summary statistics
+  total_cells <- nrow(diff_final)
+  agreement_cells <- sum(diff_final$difference == 0, na.rm = TRUE)
+  captain2_only <- sum(diff_final$difference == 1, na.rm = TRUE)
+  richness_only <- sum(diff_final$difference == -1, na.rm = TRUE)
+  
+  agreement_percent <- (agreement_cells / total_cells) * 100
+  captain2_only_percent <- (captain2_only / total_cells) * 100
+  richness_only_percent <- (richness_only / total_cells) * 100
+  
+  # Print summary statistics with debugging info
+  cat("\n========================================\n")
+  cat("SUMMARY STATISTICS -", comparison_name, "\n")
+  cat("========================================\n")
+  cat("CAPTAIN2 priority cells:", high_priority_cells, "\n")
+  cat("Richness priority cells:", high_priority_cells, "(same number)\n")
+  cat("CAPTAIN2 raster 1s:", sum(values(captain2_raster) == 1, na.rm = TRUE), "\n")
+  cat("Richness raster 1s:", sum(values(richness_binary) == 1, na.rm = TRUE), "\n")
+  cat("Total priority cells compared:", total_cells, "\n")
+  cat("----------------------------------------\n")
+  cat("Agreement (both prioritize same cell):", agreement_cells, "(", round(agreement_percent, 2), "%)\n")
+  cat("Only CAPTAIN2 prioritizes:", captain2_only, "(", round(captain2_only_percent, 2), "%)\n")
+  cat("Only Richness prioritizes:", richness_only, "(", round(richness_only_percent, 2), "%)\n")
+  cat("----------------------------------------\n")
+  cat("Total accounted for:", round(agreement_percent + captain2_only_percent + richness_only_percent, 2), "%\n")
+  cat("========================================\n\n")
+  
+  return(list(plot = diff_plot, 
+              captain2_cells = high_priority_cells,
+              richness_threshold = richness_threshold,
+              total_cells = total_cells,
+              agreement_cells = agreement_cells,
+              agreement_percent = agreement_percent,
+              captain2_only_percent = captain2_only_percent,
+              richness_only_percent = richness_only_percent))
+}
+
+# Threatened species comparison
+threatened_comparison <- create_comparison_maps(
+  CAPTAIN2_IUCN_data_nonzero, 
+  threatened_richness, 
+  priority_threshold = 0.85,
+  comparison_name = "Threatened Species"
+)
+print(threatened_comparison$plot)
+
+# FUSE comparison  
+fuse_comparison <- create_comparison_maps(
+  CAPTAIN2_FUSE_data_nonzero,
+  fuse_richness,
+  priority_threshold = 0.85, 
+  comparison_name = "FUSE"
+)
+print(fuse_comparison$plot)
+
+# EDGE2 comparison
+edge2_comparison <- create_comparison_maps(
+  CAPTAIN2_EDGE2_data_nonzero,
+  edge2_richness,
+  priority_threshold = 0.85,
+  comparison_name = "EDGE2" 
+)
+print(edge2_comparison$plot)
+```
+
+
