@@ -1128,6 +1128,10 @@ congruent_map <- ggplot() +
 # Display the map
 print(congruent_map)
 
+ggsave(here::here("outputs", "congruent_high_prioritiy_areas_09.png"), 
+       congruent_map, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
 # Create detailed congruence categories
 # Define logical conditions for each index
 EDGE2_high <- combined_priorities$Priority_EDGE2 > 0.9
@@ -1230,7 +1234,7 @@ if (nrow(high_priority_data) > 0) {
         override.aes = list(size = 4, alpha = 1),  # Larger, more opaque legend points
         title.position = "top",
         title.hjust = 0.5,
-        ncol = 2  # Two columns for legend to save space
+        ncol = 4  # Two columns for legend to save space
       )) +
     labs(
       title = "Global Conservation Priority Congruence Analysis",
@@ -1306,6 +1310,142 @@ total_high_priority <- sum(congruence_summary[names(congruence_summary) != "No h
 congruence_percentages <- round(congruence_summary / total_high_priority * 100, 2)
 cat("\nPercentages of high priority areas:\n")
 print(congruence_percentages[names(congruence_percentages) != "No high priority"])
+
+# ms style map -----
+
+# Add troubleshooting statements throughout the code
+library(sf)
+library(ggplot2)
+
+# Step 1: Check original data
+print("=== STEP 1: CHECKING ORIGINAL DATA ===")
+print(paste("Number of rows in plot_data:", nrow(plot_data)))
+print("First few rows of plot_data:")
+print(head(plot_data))
+print("Summary of coordinates:")
+print(summary(plot_data[c("x", "y")]))
+print("Unique categories:")
+print(unique(plot_data$category))
+
+# Step 2: Transform to sf object
+print("=== STEP 2: CREATING SF OBJECT ===")
+congruence_sf <- st_as_sf(
+  plot_data, 
+  coords = c("x", "y"), 
+  crs = mcbryde_thomas_2  # Assuming WGS84
+)
+print(paste("Number of sf features created:", nrow(congruence_sf)))
+print("Original CRS:")
+print(st_crs(congruence_sf))
+print("Bounding box before projection:")
+print(st_bbox(congruence_sf))
+
+# Step 3: Project to McBryde-Thomas 2
+print("=== STEP 3: PROJECTING TO MCBRYDE-THOMAS 2 ===")
+congruence_sf <- st_transform(congruence_sf, crs = mcbryde_thomas_2)
+print("CRS after projection:")
+print(st_crs(congruence_sf))
+print("Bounding box after projection:")
+print(st_bbox(congruence_sf))
+
+# Step 4: Check world projection
+print("=== STEP 4: CHECKING WORLD PROJECTION ===")
+world_projected_congruence <- st_transform(world, crs = mcbryde_thomas_2)
+print("World bounding box:")
+print(st_bbox(world_projected_congruence))
+
+# Step 5: Create globe border
+print("=== STEP 5: CREATING GLOBE BORDER ===")
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+globe_border_congruence <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+print("Globe border bounding box:")
+print(st_bbox(globe_border_congruence))
+
+# Step 6: Check intersection
+print("=== STEP 6: CHECKING INTERSECTION ===")
+points_in_globe <- st_intersects(congruence_sf, globe_border_congruence, sparse = FALSE)
+print(paste("Points within globe boundary:", sum(points_in_globe)))
+print(paste("Percentage of points in globe:", round(sum(points_in_globe)/nrow(congruence_sf)*100, 2), "%"))
+
+# Step 7: Extract coordinates for verification
+print("=== STEP 7: EXTRACTING COORDINATES ===")
+coords <- st_coordinates(congruence_sf)
+print("Projected coordinate summary:")
+print(summary(coords))
+print("First few projected coordinates:")
+print(head(coords))
+
+# Step 8: Create theme
+my_theme_congruence <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank()
+  )
+
+# Step 9: Create plot with debugging
+print("=== STEP 9: CREATING PLOT ===")
+congruence_map <- ggplot() +
+  geom_sf(data = congruence_sf, aes(color = category), size = 1.2, alpha = 0.85) +
+  geom_sf(data = world_projected_congruence, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_congruence, fill = NA, color = "black", size = 0.5) +
+  scale_color_manual(
+    values = c("All three indices" = "#8B0000",      
+              "EDGE2 + FUSE" = "#FF8C00",            
+              "EDGE2 + IUCN" = "#DC143C",            
+              "FUSE + IUCN" = "#FFD700",             
+              "EDGE2 only" = "#4169E1",              
+              "FUSE only" = "#32CD32",               
+              "IUCN only" = "#9370DB"),              
+    name = "High Priority Congruence",
+    guide = guide_legend(
+      override.aes = list(size = 4, alpha = 1),
+      title.position = "top", 
+      title.hjust = 0.5,
+      ncol = 4
+    )) +
+  labs(
+    title = "Global Conservation Priority Congruence Analysis",
+    subtitle = "High priority areas (>0.9) showing agreement patterns across EDGE2, FUSE, and IUCN prioritisations",
+    x = NULL, 
+    y = NULL
+  ) +
+  my_theme_congruence
+
+print("=== STEP 10: DISPLAYING PLOT ===")
+print("Plot created successfully")
+
+# Alternative test plot with just points to see if they're visible
+print("=== CREATING TEST PLOT WITH JUST POINTS ===")
+test_plot <- ggplot() +
+  geom_sf(data = congruence_sf, aes(color = category), size = 2, alpha = 1) +
+  scale_color_manual(
+    values = c("All three indices" = "#8B0000",      
+              "EDGE2 + FUSE" = "#FF8C00",            
+              "EDGE2 + IUCN" = "#DC143C",            
+              "FUSE + IUCN" = "#FFD700",             
+              "EDGE2 only" = "#4169E1",              
+              "FUSE only" = "#32CD32",               
+              "IUCN only" = "#9370DB")) +
+  labs(title = "Test Plot - Points Only")
+
+print("Test plot created")
+
+# Display both plots
+print(congruence_map)
+print(test_plot)
+
+
 ```
 
 ## Relationship with fishing effort : bar plots per country 
