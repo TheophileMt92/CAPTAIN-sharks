@@ -1569,35 +1569,10 @@ congruence_results <- data.frame(
 )
 
 print(congruence_results)
-
-# Optional: Create a visualization of the randomization test results
-library(ggplot2)
-
-# Example for FUSE vs EDGE2 (you can repeat for others)
-hist_data <- data.frame(random_overlap = test_fuse_edge2$random_overlaps)
-
-randomization_plot <- ggplot(hist_data, aes(x = random_overlap)) +
-  geom_histogram(bins = 50, fill = "lightblue", alpha = 0.7, color = "black") +
-  geom_vline(xintercept = test_fuse_edge2$observed_percentage, 
-             color = "red", linetype = "dashed", size = 1) +
-  geom_vline(xintercept = test_fuse_edge2$expected_percentage, 
-             color = "blue", linetype = "solid", size = 1) +
-  labs(title = "Randomization Test: FUSE vs EDGE2 Congruence",
-       subtitle = paste("Observed overlap:", round(test_fuse_edge2$observed_percentage, 2), 
-                        "%, P-value:", test_fuse_edge2$p_value),
-       x = "Overlap Percentage (%)",
-       y = "Frequency") +
-  theme_minimal() +
-  annotate("text", x = test_fuse_edge2$observed_percentage, 
-           y = Inf, label = "Observed", vjust = 2, color = "red") +
-  annotate("text", x = test_fuse_edge2$expected_percentage, 
-           y = Inf, label = "Expected", vjust = 2, color = "blue")
-
-print(randomization_plot)
 ```
 
 
-## Relationship with fishing effort : bar plots per country 
+## Relationship with fishing effort : ecoregion level scatterplots  
 
 ```{r}
 library(here)
@@ -2022,6 +1997,189 @@ print(label_data_edge2 %>% dplyr::select(ECOREGION, REALM, mean_fishing_hours, m
 
 # The main combined plot is printed above
 
+```
+
+## Relationship with fishing effort : bivariate maps  
+
+```{r}
+# Load required packages
+library(tidyverse)      # For data manipulation and visualization
+library(sf)             # For spatial data handling
+library(rnaturalearth)  # For world map data
+library(rnaturalearthdata) # Additional natural earth data
+library(biscale)        # For bivariate mapping
+library(gridExtra)      # For arranging multiple plots
+library(grid)           # For text elements in plots
+library(colorspace)     # For color manipulation
+library(here)           # For file path management
+
+# Load your CAPTAIN data
+IUCN_data <- CAPTAIN2_IUCN_data_nonzero  # Assuming this exists from your previous code
+FUSE_data <- CAPTAIN2_FUSE_data_nonzero  # Assuming this exists from your previous code
+EDGE2_data <- CAPTAIN2_EDGE2_data_nonzero # Assuming this exists from your previous code
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
+# Process and prepare the data function
+process_bivariate_data <- function(priority_data, fishing_data, min_priority = 0) {
+  # Filter for cells with priority > min_priority
+  priority_data_filtered <- priority_data %>%
+    filter(Priority > min_priority)
+  
+  # Prepare fishing data
+  fishing_data <- fishing_data %>%
+    rename(Longitude = lon_05deg, Latitude = lat_05deg, FishingHours = predicted_fishing_hours)
+  
+  # Join datasets
+  combined_data <- priority_data_filtered %>%
+    left_join(fishing_data, by = c("Longitude", "Latitude"))
+  
+  # Handle NAs in fishing hours (replace with 0)
+  combined_data$FishingHours[is.na(combined_data$FishingHours)] <- 0
+  
+  # Normalize priorities to 0-1 range and log transform fishing hours
+  combined_data <- combined_data %>%
+    mutate(
+      Priority_Norm = Priority, # Assuming already in 0-1 range
+      # Log transform fishing hours to better handle skewed distribution
+      FishingHours_Log = log1p(FishingHours),
+      # Normalize log fishing hours
+      FishingHours_Norm = (FishingHours_Log - min(FishingHours_Log, na.rm = TRUE)) /
+                         (max(FishingHours_Log, na.rm = TRUE) - min(FishingHours_Log, na.rm = TRUE))
+    )
+  
+  # Set projection
+  mcbryde_thomas_2 <- "+proj=mbt_s"
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process the three datasets with fishing data (only cells with Priority > 0)
+iucn_fishing_sf <- process_bivariate_data(IUCN_data, aggregated_data, min_priority = 0)
+fuse_fishing_sf <- process_bivariate_data(FUSE_data, aggregated_data, min_priority = 0)
+edge2_fishing_sf <- process_bivariate_data(EDGE2_data, aggregated_data, min_priority = 0)
+
+# Create color palette - using the PurpleOr scheme
+create_bivariate_palette <- function() {
+  map_pal_raw <- bi_pal(pal = 'PurpleOr', dim = 4, preview = FALSE)
+  map_pal_mtx <- matrix(map_pal_raw, nrow = 4, ncol = 4)
+  map_pal_mtx[3, ] <- colorspace::lighten(map_pal_mtx[3, ], .1)
+  map_pal_mtx[2, ] <- colorspace::lighten(map_pal_mtx[2, ], .2)
+  map_pal_mtx[1, ] <- colorspace::lighten(map_pal_mtx[1, ], .3)
+  map_pal_mtx[ , 3] <- colorspace::lighten(map_pal_mtx[ , 3], .1)
+  map_pal_mtx[ , 2] <- colorspace::lighten(map_pal_mtx[ , 2], .2)
+  map_pal_mtx[ , 1] <- colorspace::lighten(map_pal_mtx[ , 1], .3)
+  map_pal_mtx[1, 1] <- '#ffffee'
+  map_pal <- as.vector(map_pal_mtx) %>% setNames(names(map_pal_raw))
+  return(map_pal)
+}
+
+map_pal <- create_bivariate_palette()
+
+# Color mapping function
+get_color <- function(priority, fishing) {
+  priority_class <- cut(priority, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  fishing_class <- cut(fishing, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  return(map_pal[(as.numeric(fishing_class)-1)*4 + as.numeric(priority_class)])
+}
+
+# Apply colors to the datasets
+iucn_fishing_sf$bivariate_color <- mapply(get_color,
+                                          iucn_fishing_sf$Priority_Norm,
+                                          iucn_fishing_sf$FishingHours_Norm)
+
+fuse_fishing_sf$bivariate_color <- mapply(get_color,
+                                          fuse_fishing_sf$Priority_Norm,
+                                          fuse_fishing_sf$FishingHours_Norm)
+
+edge2_fishing_sf$bivariate_color <- mapply(get_color,
+                                          edge2_fishing_sf$Priority_Norm,
+                                          edge2_fishing_sf$FishingHours_Norm)
+
+# Get world map and project
+world <- ne_countries(scale = "medium", returnclass = "sf")
+mcbryde_thomas_2 <- "+proj=mbt_s"
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create globe border
+lon_points <- rep(c(-180, 180), each = 100)
+lat_points <- c(seq(-90, 90, length.out = 100), seq(90, -90, length.out = 100))
+
+globe_outline <- data.frame(lon = lon_points, lat = lat_points) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_combine() %>%
+  st_cast("POLYGON") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Function to create individual bivariate maps with labels
+create_bivariate_map <- function(data_sf, label) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = bivariate_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_outline, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL) +
+    theme(panel.grid = element_blank(),
+          plot.margin = margin(0, 5, 0, 5, "mm")) +
+    # Add label in top-left corner
+    annotate("text", x = -Inf, y = Inf, label = label, 
+             hjust = -0.2, vjust = 1.2, size = 6, fontface = "bold")
+}
+
+# Create the three maps with labels
+iucn_plot <- create_bivariate_map(iucn_fishing_sf, "(A)")
+fuse_plot <- create_bivariate_map(fuse_fishing_sf, "(B)")  
+edge2_plot <- create_bivariate_map(edge2_fishing_sf, "(C)")
+
+# Create a smaller legend for better proportions
+small_legend <- bi_legend(pal = map_pal, dim = 4,
+                         xlab = 'Conservation Priority',
+                         ylab = 'Fishing Effort',
+                         size = 1.5) +  # Slightly smaller than before
+  theme(
+    axis.title = element_text(size = 10, face = "bold"),
+    axis.text = element_blank(),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 10, face = "bold"),
+    plot.margin = margin(0, 5, 5, 5, "mm")  # Reduced top margin to 0
+  )
+
+# Create layout matrix: 2 rows, 3 columns
+# First row: maps 1, 2, 3
+# Second row: empty, legend (4), empty
+layout_matrix <- rbind(c(1, 2, 3),
+                      c(NA, 4, NA))  # NA creates empty spaces
+
+# Arrange all plots together
+combined_plot <- grid.arrange(
+  iucn_plot,
+  fuse_plot,
+  edge2_plot,
+  small_legend,
+  layout_matrix = layout_matrix,
+  heights = c(1, 0.3),  # Maps take most space, legend row is smaller
+  widths = c(1, 1, 1)   # Equal width for all three columns
+)
+
+# Display the plot
+print(combined_plot)
+
+# Print summary statistics
+cat("Summary Statistics (Priority > 0 cells only):\n")
+cat("IUCN cells (A):", nrow(iucn_fishing_sf), "\n")
+cat("FUSE cells (B):", nrow(fuse_fishing_sf), "\n")
+cat("EDGE2 cells (C):", nrow(edge2_fishing_sf), "\n")
+
+# Optional: Save individual plots
+ggsave(here::here("outputs", "All_indices_fishing_bivariate_maps.png"), 
+       combined_plot, width = 16, height = 8, dpi = 300, bg = "white")
 ```
 
 ## Maps of SR, FUn and EDGE2  
