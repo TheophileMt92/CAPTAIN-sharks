@@ -1422,6 +1422,10 @@ congruence_map <- ggplot() +
   ) +
   my_theme_congruence
 
+ggsave(here::here("outputs", "congruent_high_prioritiy_areas_09_all_indices.png"), 
+       congruence_map, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
 print("=== STEP 10: DISPLAYING PLOT ===")
 print("Plot created successfully")
 
@@ -1444,9 +1448,154 @@ print("Test plot created")
 # Display both plots
 print(congruence_map)
 print(test_plot)
-
-
 ```
+
+
+## Congruence tests 
+
+```{r}
+# Statistical congruence analysis following the methods section
+# First, extract priority values for the comparison
+priority_threshold <- 0.9
+
+# Create binary matrices for high-priority areas (>0.9)
+fuse_high <- CAPTAIN2_FUSE_data_nonzero$Priority > priority_threshold
+edge2_high <- CAPTAIN2_EDGE2_data_nonzero$Priority > priority_threshold
+iucn_high <- CAPTAIN2_IUCN_data_nonzero$Priority > priority_threshold
+
+# Calculate observed overlaps
+observed_fuse_edge2 <- sum(fuse_high & edge2_high)
+observed_fuse_iucn <- sum(fuse_high & iucn_high)
+observed_edge2_iucn <- sum(edge2_high & iucn_high)
+observed_all_three <- sum(fuse_high & edge2_high & iucn_high)
+
+# Calculate minimum high-priority cells for each comparison
+min_fuse_edge2 <- min(sum(fuse_high), sum(edge2_high))
+min_fuse_iucn <- min(sum(fuse_high), sum(iucn_high))
+min_edge2_iucn <- min(sum(edge2_high), sum(iucn_high))
+
+# Calculate percentage overlaps (conservative estimate)
+overlap_fuse_edge2 <- (observed_fuse_edge2 / min_fuse_edge2) * 100
+overlap_fuse_iucn <- (observed_fuse_iucn / min_fuse_iucn) * 100
+overlap_edge2_iucn <- (observed_edge2_iucn / min_edge2_iucn) * 100
+
+# Randomization test function
+randomization_test <- function(index1_high, index2_high, n_permutations = 999) {
+  observed_overlap <- sum(index1_high & index2_high)
+  min_cells <- min(sum(index1_high), sum(index2_high))
+  observed_percentage <- (observed_overlap / min_cells) * 100
+  
+  # Generate random overlaps
+  random_overlaps <- replicate(n_permutations, {
+    # Randomly shuffle the spatial distribution of index1
+    shuffled_index1 <- sample(index1_high)
+    random_overlap <- sum(shuffled_index1 & index2_high)
+    (random_overlap / min_cells) * 100
+  })
+  
+  # Calculate p-value
+  if (observed_percentage > mean(random_overlaps)) {
+    p_value <- sum(random_overlaps >= observed_percentage) / n_permutations
+  } else {
+    p_value <- sum(random_overlaps <= observed_percentage) / n_permutations
+  }
+  
+  return(list(
+    observed_percentage = observed_percentage,
+    expected_percentage = mean(random_overlaps),
+    p_value = p_value,
+    random_overlaps = random_overlaps
+  ))
+}
+
+# Perform randomization tests
+print("=== STATISTICAL CONGRUENCE ANALYSIS ===")
+cat("Threshold for high-priority areas:", priority_threshold, "\n\n")
+
+# FUSE vs EDGE2
+test_fuse_edge2 <- randomization_test(fuse_high, edge2_high)
+cat("FUSE vs EDGE2:\n")
+cat("Observed overlap:", round(test_fuse_edge2$observed_percentage, 2), "%\n")
+cat("Expected overlap:", round(test_fuse_edge2$expected_percentage, 2), "%\n")
+cat("P-value:", test_fuse_edge2$p_value, "\n\n")
+
+# FUSE vs IUCN
+test_fuse_iucn <- randomization_test(fuse_high, iucn_high)
+cat("FUSE vs IUCN:\n")
+cat("Observed overlap:", round(test_fuse_iucn$observed_percentage, 2), "%\n")
+cat("Expected overlap:", round(test_fuse_iucn$expected_percentage, 2), "%\n")
+cat("P-value:", test_fuse_iucn$p_value, "\n\n")
+
+# EDGE2 vs IUCN
+test_edge2_iucn <- randomization_test(edge2_high, iucn_high)
+cat("EDGE2 vs IUCN:\n")
+cat("Observed overlap:", round(test_edge2_iucn$observed_percentage, 2), "%\n")
+cat("Expected overlap:", round(test_edge2_iucn$expected_percentage, 2), "%\n")
+cat("P-value:", test_edge2_iucn$p_value, "\n\n")
+
+# Summary statistics
+cat("SUMMARY:\n")
+cat("Total high-priority cells:\n")
+cat("- FUSE:", sum(fuse_high), "\n")
+cat("- EDGE2:", sum(edge2_high), "\n")
+cat("- IUCN:", sum(iucn_high), "\n")
+cat("- All three indices:", observed_all_three, "\n")
+cat("- Percentage of cells with full congruence:", 
+    round((observed_all_three / max(sum(fuse_high), sum(edge2_high), sum(iucn_high))) * 100, 2), "%\n")
+
+# Create a summary table
+congruence_results <- data.frame(
+  Comparison = c("FUSE vs EDGE2", "FUSE vs IUCN", "EDGE2 vs IUCN"),
+  Observed_Overlap_Percent = c(test_fuse_edge2$observed_percentage,
+                               test_fuse_iucn$observed_percentage,
+                               test_edge2_iucn$observed_percentage),
+  Expected_Overlap_Percent = c(test_fuse_edge2$expected_percentage,
+                               test_fuse_iucn$expected_percentage,
+                               test_edge2_iucn$expected_percentage),
+  P_Value = c(test_fuse_edge2$p_value,
+              test_fuse_iucn$p_value,
+              test_edge2_iucn$p_value),
+  Significance = c(
+    ifelse(test_fuse_edge2$p_value < 0.001, "***",
+           ifelse(test_fuse_edge2$p_value < 0.01, "**",
+                  ifelse(test_fuse_edge2$p_value < 0.05, "*", "ns"))),
+    ifelse(test_fuse_iucn$p_value < 0.001, "***",
+           ifelse(test_fuse_iucn$p_value < 0.01, "**",
+                  ifelse(test_fuse_iucn$p_value < 0.05, "*", "ns"))),
+    ifelse(test_edge2_iucn$p_value < 0.001, "***",
+           ifelse(test_edge2_iucn$p_value < 0.01, "**",
+                  ifelse(test_edge2_iucn$p_value < 0.05, "*", "ns")))
+  )
+)
+
+print(congruence_results)
+
+# Optional: Create a visualization of the randomization test results
+library(ggplot2)
+
+# Example for FUSE vs EDGE2 (you can repeat for others)
+hist_data <- data.frame(random_overlap = test_fuse_edge2$random_overlaps)
+
+randomization_plot <- ggplot(hist_data, aes(x = random_overlap)) +
+  geom_histogram(bins = 50, fill = "lightblue", alpha = 0.7, color = "black") +
+  geom_vline(xintercept = test_fuse_edge2$observed_percentage, 
+             color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = test_fuse_edge2$expected_percentage, 
+             color = "blue", linetype = "solid", size = 1) +
+  labs(title = "Randomization Test: FUSE vs EDGE2 Congruence",
+       subtitle = paste("Observed overlap:", round(test_fuse_edge2$observed_percentage, 2), 
+                        "%, P-value:", test_fuse_edge2$p_value),
+       x = "Overlap Percentage (%)",
+       y = "Frequency") +
+  theme_minimal() +
+  annotate("text", x = test_fuse_edge2$observed_percentage, 
+           y = Inf, label = "Observed", vjust = 2, color = "red") +
+  annotate("text", x = test_fuse_edge2$expected_percentage, 
+           y = Inf, label = "Expected", vjust = 2, color = "blue")
+
+print(randomization_plot)
+```
+
 
 ## Relationship with fishing effort : bar plots per country 
 
