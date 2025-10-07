@@ -670,7 +670,19 @@ all_diffs_plot <- IUCN_FUSE_plot / IUCN_EDGE2_plot / EDGE2_FUSE_plot +
 #)
 ```
 
-# Species level priorities
+# Species level priorities 
+
+## Boxplots of biodiversity scores against protected fraction 
+
+## Relationship Between Species Metrics and Protection Levels
+
+To examine whether each prioritisation approach successfully targeted species based on its respective biodiversity metric, we analysed the relationship between species-level metric scores and the protection achieved under each approach.
+
+For each prioritisation approach, we calculated Spearman rank correlations between species' metric scores and the fraction of their range protected under that approach. Specifically, we tested: (1) whether IUCN threat status correlated with protection under IUCN prioritisation, (2) whether FUSE scores correlated with protection under FUSE prioritisation, and (3) whether EDGE2 scores correlated with protection under EDGE2 prioritisation. Spearman correlations were used due to the ordinal nature of the metric scores (IUCN categories 1-5, FUSE scores 1-5, EDGE2 scores 1-5) and non-normal distributions of protection values.
+
+To assess the specificity of each approach's targeting, we conducted cross-correlation analyses examining whether protection levels under one approach correlated with metric scores from the other approaches. For example, we tested whether IUCN-based protection correlated with FUSE and EDGE2 scores, in addition to IUCN threat status. This created a 3 × 3 correlation matrix with protection approaches as rows and metric types as columns. Strong correlations along the diagonal (e.g., IUCN protection vs IUCN status) combined with weak off-diagonal correlations (e.g., IUCN protection vs FUSE scores) would indicate that each approach specifically targeted its intended biodiversity dimension.
+
+We visualised the relationships between metric scores and protection levels using boxplots showing the distribution of protection percentages across each metric category (LC, NT, VU, EN, CR for IUCN; scores 1-5 for FUSE and EDGE2). All statistical tests were performed at α = 0.05 significance level using the cor.test function in R (version 4.4.2; R Core Team 2024). Visualisations were created using the ggplot2 package.
 
 ```{r}
 # Load required packages
@@ -879,6 +891,746 @@ if(nrow(protected_fractions) == nrow(shark_metrics)) {
   cat("Protected fractions:", nrow(protected_fractions), "rows\n")
   cat("Shark metrics:", nrow(shark_metrics), "rows\n")
 }
+
+# Statistical tests for each approach
+
+# 1. IUCN: Spearman correlation between threat status and protection
+iucn_correlation <- cor.test(combined_data$IUCN_original, 
+                              combined_data$IUCN_captain, 
+                              method = "spearman")
+print("IUCN threat status vs IUCN protection:")
+print(iucn_correlation)
+
+# 2. FUSE: Spearman correlation between FUSE score and protection
+fuse_correlation <- cor.test(combined_data$FUSE_original, 
+                              combined_data$FUSE_captain, 
+                              method = "spearman")
+print("FUSE score vs FUSE protection:")
+print(fuse_correlation)
+
+# 3. EDGE2: Spearman correlation between EDGE2 score and protection
+edge2_correlation <- cor.test(combined_data$EDGE2_original, 
+                               combined_data$EDGE2_captain, 
+                               method = "spearman")
+print("EDGE2 score vs EDGE2 protection:")
+print(edge2_correlation)
+
+# Summary table of correlations
+correlation_summary <- data.frame(
+  Approach = c("IUCN", "FUSE", "EDGE2"),
+  Rho = c(iucn_correlation$estimate, 
+          fuse_correlation$estimate, 
+          edge2_correlation$estimate),
+  P_value = c(iucn_correlation$p.value, 
+              fuse_correlation$p.value, 
+              edge2_correlation$p.value)
+)
+
+print("\nCorrelation summary:")
+print(correlation_summary)
+
+#
+# Cross correlations
+cross_correlations <- data.frame(
+  Protection_by = character(),
+  Correlated_with = character(),
+  Rho = numeric(),
+  P_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# IUCN protection vs different scores
+cross_correlations <- rbind(cross_correlations,
+  data.frame(
+    Protection_by = "IUCN",
+    Correlated_with = c("IUCN_status", "FUSE_score", "EDGE2_score"),
+    Rho = c(
+      cor(combined_data$IUCN_original, combined_data$IUCN_captain, method = "spearman"),
+      cor(combined_data$FUSE_original, combined_data$IUCN_captain, method = "spearman"),
+      cor(combined_data$EDGE2_original, combined_data$IUCN_captain, method = "spearman")
+    ),
+    P_value = c(
+      cor.test(combined_data$IUCN_original, combined_data$IUCN_captain, method = "spearman")$p.value,
+      cor.test(combined_data$FUSE_original, combined_data$IUCN_captain, method = "spearman")$p.value,
+      cor.test(combined_data$EDGE2_original, combined_data$IUCN_captain, method = "spearman")$p.value
+    )
+  )
+)
+
+# FUSE protection vs different scores
+cross_correlations <- rbind(cross_correlations,
+  data.frame(
+    Protection_by = "FUSE",
+    Correlated_with = c("IUCN_status", "FUSE_score", "EDGE2_score"),
+    Rho = c(
+      cor(combined_data$IUCN_original, combined_data$FUSE_captain, method = "spearman"),
+      cor(combined_data$FUSE_original, combined_data$FUSE_captain, method = "spearman"),
+      cor(combined_data$EDGE2_original, combined_data$FUSE_captain, method = "spearman")
+    ),
+    P_value = c(
+      cor.test(combined_data$IUCN_original, combined_data$FUSE_captain, method = "spearman")$p.value,
+      cor.test(combined_data$FUSE_original, combined_data$FUSE_captain, method = "spearman")$p.value,
+      cor.test(combined_data$EDGE2_original, combined_data$FUSE_captain, method = "spearman")$p.value
+    )
+  )
+)
+
+# EDGE2 protection vs different scores
+cross_correlations <- rbind(cross_correlations,
+  data.frame(
+    Protection_by = "EDGE2",
+    Correlated_with = c("IUCN_status", "FUSE_score", "EDGE2_score"),
+    Rho = c(
+      cor(combined_data$IUCN_original, combined_data$EDGE2_captain, method = "spearman"),
+      cor(combined_data$FUSE_original, combined_data$EDGE2_captain, method = "spearman"),
+      cor(combined_data$EDGE2_original, combined_data$EDGE2_captain, method = "spearman")
+    ),
+    P_value = c(
+      cor.test(combined_data$IUCN_original, combined_data$EDGE2_captain, method = "spearman")$p.value,
+      cor.test(combined_data$FUSE_original, combined_data$EDGE2_captain, method = "spearman")$p.value,
+      cor.test(combined_data$EDGE2_original, combined_data$EDGE2_captain, method = "spearman")$p.value
+    )
+  )
+)
+
+print("Cross-correlation matrix:")
+print(cross_correlations)
+
+# Reshape for easier visualization
+cross_corr_wide <- cross_correlations %>%
+  select(Protection_by, Correlated_with, Rho) %>%
+  pivot_wider(names_from = Correlated_with, values_from = Rho)
+
+print("\nCross-correlation matrix (wide format):")
+print(cross_corr_wide)
+
+```
+
+## Best-Approach Assignment Analysis
+
+To identify which prioritisation approach provided the highest protection for each species and to examine whether species characteristics differed based on which approach performed best, we conducted a best-approach assignment analysis.
+
+For each species, we identified the approach (IUCN, FUSE, or EDGE2) that resulted in the maximum fraction of range protected. Species were classified into categories based on whether a single approach provided the best protection, multiple approaches were tied for best, or all three approaches performed equally. We then calculated "protection gaps" for each species—the difference between the maximum protection achieved and the protection provided by each non-optimal approach—to quantify how much protection species would lose if their best-performing approach were not implemented.
+
+To test whether species with different characteristics were best protected by different approaches, we examined the distribution of IUCN threat status, FUSE scores, and EDGE2 scores among species best protected by each approach. For IUCN threat status, we used a chi-square test to determine whether threatened species (Vulnerable, Endangered, or Critically Endangered) were disproportionately best protected by particular approaches. For FUSE and EDGE2 scores, we used Kruskal-Wallis rank sum tests to assess whether species best protected by different approaches differed significantly in their functional uniqueness or evolutionary distinctiveness scores. Kruskal-Wallis tests were selected due to the ordinal nature of FUSE and EDGE2 scores and non-normal distributions.
+
+Species tied for best protection across multiple approaches were excluded from the comparative analyses to ensure clear attribution of protection performance to specific prioritisation frameworks. All statistical tests were performed at α = 0.05 significance level. Analyses were conducted in R (version 4.4.2; R Core Team 2024) using the dplyr, tidyr, and ggplot2 packages.
+
+```{r}
+# Analysis 1: Best-Approach Assignment
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Identify which approach gives best protection for each species
+best_approach_analysis <- combined_data %>%
+  mutate(
+    # Find maximum protection across the three approaches
+    max_protection = pmax(IUCN_captain, FUSE_captain, EDGE2_captain),
+    
+    # Identify which approach(es) provide the maximum protection
+    best_IUCN = (IUCN_captain == max_protection),
+    best_FUSE = (FUSE_captain == max_protection),
+    best_EDGE2 = (EDGE2_captain == max_protection),
+    
+    # Count how many approaches are tied for best
+    n_best = as.integer(best_IUCN) + as.integer(best_FUSE) + as.integer(best_EDGE2),
+    
+    # Classify species by their best approach(es)
+    best_approach = case_when(
+      n_best == 3 ~ "All tied",
+      n_best == 2 & best_IUCN & best_FUSE ~ "IUCN + FUSE tied",
+      n_best == 2 & best_IUCN & best_EDGE2 ~ "IUCN + EDGE2 tied",
+      n_best == 2 & best_FUSE & best_EDGE2 ~ "FUSE + EDGE2 tied",
+      best_IUCN ~ "IUCN best",
+      best_FUSE ~ "FUSE best",
+      best_EDGE2 ~ "EDGE2 best",
+      TRUE ~ "Error"
+    ),
+    
+    # Calculate protection differences (how much better is the best vs others)
+    IUCN_gap = max_protection - IUCN_captain,
+    FUSE_gap = max_protection - FUSE_captain,
+    EDGE2_gap = max_protection - EDGE2_captain
+  )
+
+# Summary statistics
+best_approach_summary <- best_approach_analysis %>%
+  count(best_approach) %>%
+  mutate(percentage = (n / nrow(combined_data)) * 100) %>%
+  arrange(desc(n))
+
+print("Summary: Which approach provides best protection?")
+print(best_approach_summary)
+
+# For species with a single best approach, examine their characteristics
+# First, create simplified categories for clearer analysis
+best_approach_simple <- best_approach_analysis %>%
+  mutate(
+    best_single = case_when(
+      best_approach == "IUCN best" ~ "IUCN",
+      best_approach == "FUSE best" ~ "FUSE",
+      best_approach == "EDGE2 best" ~ "EDGE2",
+      TRUE ~ "Tied/Multiple"
+    )
+  )
+
+# Test 1: Does IUCN threat status differ by which approach is best?
+iucn_by_best <- best_approach_simple %>%
+  filter(best_single != "Tied/Multiple") %>%
+  group_by(best_single) %>%
+  summarise(
+    n = n(),
+    mean_IUCN_status = mean(IUCN_original, na.rm = TRUE),
+    median_IUCN_status = median(IUCN_original, na.rm = TRUE),
+    LC_count = sum(IUCN_original == 1),
+    NT_count = sum(IUCN_original == 2),
+    VU_count = sum(IUCN_original == 3),
+    EN_count = sum(IUCN_original == 4),
+    CR_count = sum(IUCN_original == 5)
+  )
+
+print("\nIUCN threat status by best approach:")
+print(iucn_by_best)
+
+# Chi-square test: Are threatened species disproportionately best-protected by certain approaches?
+contingency_table <- best_approach_simple %>%
+  filter(best_single != "Tied/Multiple") %>%
+  mutate(
+    threatened = ifelse(IUCN_original >= 3, "Threatened", "Not threatened")
+  ) %>%
+  count(best_single, threatened) %>%
+  pivot_wider(names_from = threatened, values_from = n, values_fill = 0)
+
+print("\nContingency table: Threatened vs Not threatened by best approach:")
+print(contingency_table)
+
+if(nrow(contingency_table) > 1) {
+  chi_test <- chisq.test(contingency_table[, -1])
+  print("\nChi-square test (threatened vs best approach):")
+  print(chi_test)
+}
+
+# Test 2: Does functional uniqueness (FUSE score) differ by which approach is best?
+fuse_by_best <- best_approach_simple %>%
+  filter(best_single != "Tied/Multiple") %>%
+  group_by(best_single) %>%
+  summarise(
+    n = n(),
+    mean_FUSE_score = mean(FUSE_original, na.rm = TRUE),
+    median_FUSE_score = median(FUSE_original, na.rm = TRUE),
+    sd_FUSE_score = sd(FUSE_original, na.rm = TRUE)
+  )
+
+print("\nFUSE scores by best approach:")
+print(fuse_by_best)
+
+# Kruskal-Wallis test for FUSE scores
+if(length(unique(best_approach_simple$best_single[best_approach_simple$best_single != "Tied/Multiple"])) > 1) {
+  kw_fuse <- kruskal.test(FUSE_original ~ best_single, 
+                          data = filter(best_approach_simple, best_single != "Tied/Multiple"))
+  print("\nKruskal-Wallis test (FUSE scores by best approach):")
+  print(kw_fuse)
+}
+
+# Test 3: Does evolutionary distinctiveness (EDGE2 score) differ by which approach is best?
+edge2_by_best <- best_approach_simple %>%
+  filter(best_single != "Tied/Multiple") %>%
+  group_by(best_single) %>%
+  summarise(
+    n = n(),
+    mean_EDGE2_score = mean(EDGE2_original, na.rm = TRUE),
+    median_EDGE2_score = median(EDGE2_original, na.rm = TRUE),
+    sd_EDGE2_score = sd(EDGE2_original, na.rm = TRUE)
+  )
+
+print("\nEDGE2 scores by best approach:")
+print(edge2_by_best)
+
+# Kruskal-Wallis test for EDGE2 scores
+if(length(unique(best_approach_simple$best_single[best_approach_simple$best_single != "Tied/Multiple"])) > 1) {
+  kw_edge2 <- kruskal.test(EDGE2_original ~ best_single, 
+                           data = filter(best_approach_simple, best_single != "Tied/Multiple"))
+  print("\nKruskal-Wallis test (EDGE2 scores by best approach):")
+  print(kw_edge2)
+}
+
+# Visualization 1: Stacked bar chart of best approach
+best_approach_plot <- ggplot(best_approach_summary, 
+                              aes(x = "", y = percentage, fill = best_approach)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_flip() +
+  labs(
+    title = "Which Prioritisation Approach Provides Best Protection?",
+    y = "Percentage of species (%)",
+    x = "",
+    fill = "Best approach"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  ) +
+  scale_fill_brewer(palette = "Set2")
+
+print(best_approach_plot)
+
+# Visualization 2: Protection gaps for species NOT best protected by each approach
+protection_gaps <- best_approach_analysis %>%
+  select(Species_original, IUCN_original, FUSE_original, EDGE2_original,
+         best_approach, IUCN_gap, FUSE_gap, EDGE2_gap, max_protection) %>%
+  pivot_longer(cols = c(IUCN_gap, FUSE_gap, EDGE2_gap),
+               names_to = "gap_type",
+               values_to = "protection_gap") %>%
+  mutate(
+    gap_type = gsub("_gap", "", gap_type),
+    protection_gap_pct = protection_gap * 100
+  )
+
+gap_plot <- ggplot(filter(protection_gaps, protection_gap > 0), 
+                    aes(x = gap_type, y = protection_gap_pct)) +
+  geom_violin(fill = "lightblue", alpha = 0.6) +
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(
+    title = "Protection Gaps: How Much Species Miss When Not Using Best Approach",
+    x = "Prioritisation Approach",
+    y = "Protection gap (%)",
+    subtitle = "Gap = (Best protection) - (This approach's protection)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+print(gap_plot)
+
+# Save outputs
+ggsave(here::here("outputs", "best_approach_distribution.png"),
+       best_approach_plot, width = 10, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "protection_gaps.png"),
+       gap_plot, width = 10, height = 6, dpi = 300)
+
+write.csv(best_approach_analysis, 
+          here::here("outputs", "best_approach_full_data.csv"), 
+          row.names = FALSE)
+
+write.csv(best_approach_summary, 
+          here::here("outputs", "best_approach_summary.csv"), 
+          row.names = FALSE)
+```
+
+## Coverage Accumulation Analysis
+
+To evaluate whether combining multiple prioritisation approaches provided additive conservation value beyond single-metric strategies, we conducted a coverage accumulation analysis examining species-level protection adequacy across different implementation scenarios.
+
+We first defined an adequate protection threshold of 10% of species range, representing a minimum viable protection target. For each prioritisation approach independently (IUCN, FUSE, EDGE2), we calculated the number and percentage of species achieving this threshold. 
+
+We then simulated three sequential implementation scenarios to assess the marginal gains from adding additional prioritisation frameworks:
+
+1. **Scenario A (IUCN → FUSE → EDGE2)**: Beginning with IUCN prioritisation, then adding areas prioritised by FUSE, followed by EDGE2
+2. **Scenario B (FUSE → EDGE2 → IUCN)**: Beginning with FUSE prioritisation, then adding EDGE2, followed by IUCN  
+3. **Scenario C (EDGE2 → IUCN → FUSE)**: Beginning with EDGE2 prioritisation, then adding IUCN, followed by FUSE
+
+For each scenario, we calculated the cumulative number of species achieving adequate protection (≥10% range) at each implementation step. A species was considered adequately protected if it met the threshold under any of the approaches implemented up to that step. We quantified marginal gains as the additional number of species reaching adequate protection when each successive approach was added.
+
+Additionally, we characterised species-level protection patterns by classifying each species according to which combination of approaches provided adequate protection: all three approaches, any pairwise combination, single approach only, or none. This classification identified species benefiting from multiple approaches versus those dependent on specific prioritisation frameworks.
+
+All analyses were performed in R (version 4.4.2; R Core Team 2024) using the dplyr, tidyr, and ggplot2 packages.
+
+```{r}
+# Coverage Accumulation Analysis
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Assuming you have the combined_data from your script above
+
+# Define adequate protection threshold (e.g., 10% of range)
+protection_threshold <- 0.10
+
+# Analysis 1: Single approach coverage
+single_approach_coverage <- combined_data %>%
+  summarise(
+    IUCN_adequate = sum(IUCN_captain >= protection_threshold),
+    FUSE_adequate = sum(FUSE_captain >= protection_threshold),
+    EDGE2_adequate = sum(EDGE2_captain >= protection_threshold),
+    total_species = n()
+  ) %>%
+  mutate(
+    IUCN_pct = (IUCN_adequate / total_species) * 100,
+    FUSE_pct = (FUSE_adequate / total_species) * 100,
+    EDGE2_pct = (EDGE2_adequate / total_species) * 100
+  )
+
+print("Single approach coverage:")
+print(single_approach_coverage)
+
+# Analysis 2: Sequential implementation scenarios
+# Scenario A: IUCN → IUCN+FUSE → IUCN+FUSE+EDGE2
+scenario_a <- combined_data %>%
+  mutate(
+    step1_IUCN = IUCN_captain >= protection_threshold,
+    step2_IUCN_FUSE = (IUCN_captain >= protection_threshold) | 
+                      (FUSE_captain >= protection_threshold),
+    step3_all = (IUCN_captain >= protection_threshold) | 
+                (FUSE_captain >= protection_threshold) |
+                (EDGE2_captain >= protection_threshold)
+  ) %>%
+  summarise(
+    step1 = sum(step1_IUCN),
+    step2 = sum(step2_IUCN_FUSE),
+    step3 = sum(step3_all)
+  )
+
+# Scenario B: FUSE → FUSE+EDGE2 → FUSE+EDGE2+IUCN
+scenario_b <- combined_data %>%
+  mutate(
+    step1_FUSE = FUSE_captain >= protection_threshold,
+    step2_FUSE_EDGE2 = (FUSE_captain >= protection_threshold) | 
+                       (EDGE2_captain >= protection_threshold),
+    step3_all = (FUSE_captain >= protection_threshold) | 
+                (EDGE2_captain >= protection_threshold) |
+                (IUCN_captain >= protection_threshold)
+  ) %>%
+  summarise(
+    step1 = sum(step1_FUSE),
+    step2 = sum(step2_FUSE_EDGE2),
+    step3 = sum(step3_all)
+  )
+
+# Scenario C: EDGE2 → EDGE2+IUCN → EDGE2+IUCN+FUSE
+scenario_c <- combined_data %>%
+  mutate(
+    step1_EDGE2 = EDGE2_captain >= protection_threshold,
+    step2_EDGE2_IUCN = (EDGE2_captain >= protection_threshold) | 
+                       (IUCN_captain >= protection_threshold),
+    step3_all = (EDGE2_captain >= protection_threshold) | 
+                (IUCN_captain >= protection_threshold) |
+                (FUSE_captain >= protection_threshold)
+  ) %>%
+  summarise(
+    step1 = sum(step1_EDGE2),
+    step2 = sum(step2_EDGE2_IUCN),
+    step3 = sum(step3_all)
+  )
+
+# Combine scenarios into a single dataframe for plotting
+accumulation_data <- data.frame(
+  step = rep(1:3, 3),
+  scenario = rep(c("IUCN→FUSE→EDGE2", "FUSE→EDGE2→IUCN", "EDGE2→IUCN→FUSE"), each = 3),
+  species_count = c(
+    scenario_a$step1, scenario_a$step2, scenario_a$step3,
+    scenario_b$step1, scenario_b$step2, scenario_b$step3,
+    scenario_c$step1, scenario_c$step2, scenario_c$step3
+  )
+) %>%
+  mutate(
+    percentage = (species_count / nrow(combined_data)) * 100
+  )
+
+# Plot accumulation curves
+accumulation_plot <- ggplot(accumulation_data, aes(x = step, y = percentage, 
+                                                     color = scenario, group = scenario)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = 1:3, labels = c("First\napproach", "Second\napproach", "All three\napproaches")) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
+  labs(
+    title = "Sequential Implementation of Conservation Approaches",
+    subtitle = paste0("Species achieving ≥", protection_threshold * 100, "% range protection"),
+    x = "Implementation Step",
+    y = "Species with adequate protection (%)",
+    color = "Implementation\nSequence"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+
+print(accumulation_plot)
+
+# Analysis 3: Marginal gains from adding each approach
+marginal_gains <- accumulation_data %>%
+  group_by(scenario) %>%
+  arrange(step) %>%
+  mutate(
+    marginal_gain = species_count - lag(species_count, default = 0),
+    marginal_pct = (marginal_gain / nrow(combined_data)) * 100
+  )
+
+print("Marginal gains by adding each approach:")
+print(marginal_gains)
+
+# Analysis 4: Identify species only protected by multi-approach strategy
+species_protection_profile <- combined_data %>%
+  mutate(
+    IUCN_adequate = IUCN_captain >= protection_threshold,
+    FUSE_adequate = FUSE_captain >= protection_threshold,
+    EDGE2_adequate = EDGE2_captain >= protection_threshold,
+    any_adequate = IUCN_adequate | FUSE_adequate | EDGE2_adequate,
+    multiple_adequate = (as.integer(IUCN_adequate) + 
+                         as.integer(FUSE_adequate) + 
+                         as.integer(EDGE2_adequate)) >= 2,
+    protection_pattern = case_when(
+      IUCN_adequate & FUSE_adequate & EDGE2_adequate ~ "All three",
+      IUCN_adequate & FUSE_adequate ~ "IUCN + FUSE",
+      IUCN_adequate & EDGE2_adequate ~ "IUCN + EDGE2",
+      FUSE_adequate & EDGE2_adequate ~ "FUSE + EDGE2",
+      IUCN_adequate ~ "IUCN only",
+      FUSE_adequate ~ "FUSE only",
+      EDGE2_adequate ~ "EDGE2 only",
+      TRUE ~ "None"
+    )
+  )
+
+protection_summary <- species_protection_profile %>%
+  count(protection_pattern) %>%
+  mutate(percentage = (n / nrow(combined_data)) * 100) %>%
+  arrange(desc(n))
+
+print("Species protection patterns:")
+print(protection_summary)
+
+# Save outputs
+ggsave(here::here("outputs", "coverage_accumulation_plot.png"),
+       accumulation_plot, width = 10, height = 6, dpi = 300)
+
+write.csv(accumulation_data, 
+          here::here("outputs", "accumulation_analysis.csv"), 
+          row.names = FALSE)
+
+write.csv(protection_summary, 
+          here::here("outputs", "protection_patterns.csv"), 
+          row.names = FALSE)
+
+write.csv(species_protection_profile %>% 
+            select(Species_original, IUCN_captain, FUSE_captain, EDGE2_captain,
+                   IUCN_adequate, FUSE_adequate, EDGE2_adequate, 
+                   protection_pattern), 
+          here::here("outputs", "species_protection_profiles.csv"), 
+          row.names = FALSE)
+```
+
+## Correlation Analysis
+
+## Species-Level Complementarity Analysis
+
+To assess the degree of complementarity versus redundancy among the three prioritisation approaches at the species level, we conducted correlation and overlap analyses using the fraction of each species' range protected under each approach.
+
+### Protection Level Correlations
+
+We calculated pairwise Spearman rank correlations between the protection levels (fraction of range protected) achieved by each species under the three approaches (IUCN, FUSE, and EDGE2). Spearman correlations were used due to non-normal distributions of protection values. We classified the degree of complementarity based on correlation coefficients: Rho > 0.7 indicated substitutive (redundant) approaches that protect largely the same species; Rho < 0.5 indicated additive (complementary) approaches that protect substantially different species; and 0.5 ≤ Rho ≤ 0.7 indicated moderate overlap. All correlations were tested for statistical significance using the cor.test function in R.
+
+### Quantile Overlap Analysis
+
+To examine whether the approaches agreed on which species required the most and least protection, we conducted quantile overlap analyses. For each approach, we identified species in the top 20% (80th percentile and above) and bottom 20% (20th percentile and below) of protection levels. We then quantified the overlap among approaches by calculating:
+
+1. The number of species appearing in the top 20% for all three approaches simultaneously
+2. The number of species uniquely appearing in the top 20% for only one approach
+3. The number of species appearing in pairwise combinations
+
+This analysis revealed the extent to which different approaches prioritised different species assemblages for protection. A high degree of overlap in the top 20% would indicate redundancy (approaches protect the same species), whilst low overlap would indicate complementarity (approaches protect different species). The same analysis was conducted for species in the bottom 20% to identify conservation gaps—species consistently receiving low protection regardless of the approach used.
+
+All analyses were conducted in R (version 4.4.2; R Core Team 2024) using the dplyr and ggplot2 packages for data manipulation and visualisation.
+
+```{r}
+# Analysis 3: Correlation between protection levels across approaches
+library(here)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# Calculate pairwise Spearman correlations between protection levels
+correlation_results <- data.frame(
+  Comparison = character(),
+  Spearman_Rho = numeric(),
+  P_value = numeric(),
+  Interpretation = character(),
+  stringsAsFactors = FALSE
+)
+
+# IUCN vs FUSE protection
+iucn_fuse_cor <- cor.test(combined_data$IUCN_captain, 
+                          combined_data$FUSE_captain, 
+                          method = "spearman")
+
+correlation_results <- rbind(correlation_results, data.frame(
+  Comparison = "IUCN vs FUSE",
+  Spearman_Rho = iucn_fuse_cor$estimate,
+  P_value = iucn_fuse_cor$p.value,
+  Interpretation = ifelse(iucn_fuse_cor$estimate > 0.7, "Substitutive (redundant)",
+                          ifelse(iucn_fuse_cor$estimate < 0.5, "Additive (complementary)", 
+                                 "Moderate overlap"))
+))
+
+# IUCN vs EDGE2 protection
+iucn_edge2_cor <- cor.test(combined_data$IUCN_captain, 
+                           combined_data$EDGE2_captain, 
+                           method = "spearman")
+
+correlation_results <- rbind(correlation_results, data.frame(
+  Comparison = "IUCN vs EDGE2",
+  Spearman_Rho = iucn_edge2_cor$estimate,
+  P_value = iucn_edge2_cor$p.value,
+  Interpretation = ifelse(iucn_edge2_cor$estimate > 0.7, "Substitutive (redundant)",
+                          ifelse(iucn_edge2_cor$estimate < 0.5, "Additive (complementary)", 
+                                 "Moderate overlap"))
+))
+
+# FUSE vs EDGE2 protection
+fuse_edge2_cor <- cor.test(combined_data$FUSE_captain, 
+                           combined_data$EDGE2_captain, 
+                           method = "spearman")
+
+correlation_results <- rbind(correlation_results, data.frame(
+  Comparison = "FUSE vs EDGE2",
+  Spearman_Rho = fuse_edge2_cor$estimate,
+  P_value = fuse_edge2_cor$p.value,
+  Interpretation = ifelse(fuse_edge2_cor$estimate > 0.7, "Substitutive (redundant)",
+                          ifelse(fuse_edge2_cor$estimate < 0.5, "Additive (complementary)", 
+                                 "Moderate overlap"))
+))
+
+print("Pairwise correlations between protection levels:")
+print(correlation_results)
+
+# Visualization: Individual scatterplots with trend lines
+# IUCN vs FUSE
+p1 <- ggplot(combined_data, aes(x = IUCN_captain * 100, y = FUSE_captain * 100)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = "IUCN vs FUSE Protection",
+    subtitle = paste0("Spearman ρ = ", round(iucn_fuse_cor$estimate, 3), 
+                     ", p < 0.001"),
+    x = "IUCN Protection (%)",
+    y = "FUSE Protection (%)"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# IUCN vs EDGE2
+p2 <- ggplot(combined_data, aes(x = IUCN_captain * 100, y = EDGE2_captain * 100)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = "IUCN vs EDGE2 Protection",
+    subtitle = paste0("Spearman ρ = ", round(iucn_edge2_cor$estimate, 3), 
+                     ", p < 0.001"),
+    x = "IUCN Protection (%)",
+    y = "EDGE2 Protection (%)"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# FUSE vs EDGE2
+p3 <- ggplot(combined_data, aes(x = FUSE_captain * 100, y = EDGE2_captain * 100)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = "FUSE vs EDGE2 Protection",
+    subtitle = paste0("Spearman ρ = ", round(fuse_edge2_cor$estimate, 3), 
+                     ", p < 0.001"),
+    x = "FUSE Protection (%)",
+    y = "EDGE2 Protection (%)"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p1)
+print(p2)
+print(p3)
+
+# Additional analysis: Agreement in extreme values
+# Species in top 20% vs bottom 20% protection
+quantile_analysis <- combined_data %>%
+  mutate(
+    IUCN_top20 = IUCN_captain >= quantile(IUCN_captain, 0.8),
+    IUCN_bottom20 = IUCN_captain <= quantile(IUCN_captain, 0.2),
+    FUSE_top20 = FUSE_captain >= quantile(FUSE_captain, 0.8),
+    FUSE_bottom20 = FUSE_captain <= quantile(FUSE_captain, 0.2),
+    EDGE2_top20 = EDGE2_captain >= quantile(EDGE2_captain, 0.8),
+    EDGE2_bottom20 = EDGE2_captain <= quantile(EDGE2_captain, 0.2)
+  )
+
+# Count overlaps in top 20%
+top20_overlap <- quantile_analysis %>%
+  summarise(
+    All_three_top20 = sum(IUCN_top20 & FUSE_top20 & EDGE2_top20),
+    IUCN_FUSE_top20 = sum(IUCN_top20 & FUSE_top20 & !EDGE2_top20),
+    IUCN_EDGE2_top20 = sum(IUCN_top20 & !FUSE_top20 & EDGE2_top20),
+    FUSE_EDGE2_top20 = sum(!IUCN_top20 & FUSE_top20 & EDGE2_top20),
+    Only_IUCN_top20 = sum(IUCN_top20 & !FUSE_top20 & !EDGE2_top20),
+    Only_FUSE_top20 = sum(!IUCN_top20 & FUSE_top20 & !EDGE2_top20),
+    Only_EDGE2_top20 = sum(!IUCN_top20 & !FUSE_top20 & EDGE2_top20)
+  )
+
+print("\nOverlap in top 20% protected species:")
+print(top20_overlap)
+print(paste0("Percentage in all three top 20%: ", 
+             round(top20_overlap$All_three_top20 / 200 * 100, 1), "%"))
+
+# Count overlaps in bottom 20%
+bottom20_overlap <- quantile_analysis %>%
+  summarise(
+    All_three_bottom20 = sum(IUCN_bottom20 & FUSE_bottom20 & EDGE2_bottom20),
+    IUCN_FUSE_bottom20 = sum(IUCN_bottom20 & FUSE_bottom20 & !EDGE2_bottom20),
+    IUCN_EDGE2_bottom20 = sum(IUCN_bottom20 & !FUSE_bottom20 & EDGE2_bottom20),
+    FUSE_EDGE2_bottom20 = sum(!IUCN_bottom20 & FUSE_bottom20 & EDGE2_bottom20),
+    Only_IUCN_bottom20 = sum(IUCN_bottom20 & !FUSE_bottom20 & !EDGE2_bottom20),
+    Only_FUSE_bottom20 = sum(!IUCN_bottom20 & FUSE_bottom20 & !EDGE2_bottom20),
+    Only_EDGE2_bottom20 = sum(!IUCN_bottom20 & !FUSE_bottom20 & EDGE2_bottom20)
+  )
+
+print("\nOverlap in bottom 20% protected species:")
+print(bottom20_overlap)
+print(paste0("Percentage in all three bottom 20%: ", 
+             round(bottom20_overlap$All_three_bottom20 / 200 * 100, 1), "%"))
+
+# Calculate percentage of species unique to each approach in top 20%
+unique_percentages <- data.frame(
+  Approach = c("IUCN only", "FUSE only", "EDGE2 only", "All three"),
+  Count = c(top20_overlap$Only_IUCN_top20, 
+            top20_overlap$Only_FUSE_top20,
+            top20_overlap$Only_EDGE2_top20,
+            top20_overlap$All_three_top20),
+  Percentage = c(
+    top20_overlap$Only_IUCN_top20 / 200 * 100,
+    top20_overlap$Only_FUSE_top20 / 200 * 100,
+    top20_overlap$Only_EDGE2_top20 / 200 * 100,
+    top20_overlap$All_three_top20 / 200 * 100
+  )
+)
+
+print("\nTop 20% protection: unique vs shared:")
+print(unique_percentages)
+
+# Save outputs
+ggsave(here::here("outputs", "iucn_vs_fuse_scatter.png"),
+       p1, width = 8, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "iucn_vs_edge2_scatter.png"),
+       p2, width = 8, height = 6, dpi = 300)
+
+ggsave(here::here("outputs", "fuse_vs_edge2_scatter.png"),
+       p3, width = 8, height = 6, dpi = 300)
+
+write.csv(correlation_results, 
+          here::here("outputs", "protection_correlation_results.csv"), 
+          row.names = FALSE)
+
+write.csv(unique_percentages,
+          here::here("outputs", "top20_unique_protection.csv"),
+          row.names = FALSE)
 ```
 
 # Manuscript maps
