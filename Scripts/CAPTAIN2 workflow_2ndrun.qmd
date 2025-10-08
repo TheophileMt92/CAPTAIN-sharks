@@ -872,8 +872,287 @@ if(nrow(protected_fractions) == nrow(shark_metrics)) {
   ggsave(here::here("outputs", "edge2_protection_boxplot.png"), 
          edge2_boxplot, width = 10, height = 6, dpi = 300)
   
-  # Create a nicely formatted table showing the ordered species
-  species_table <- combined_data %>%
+# Install patchwork if needed
+# install.packages("patchwork")
+library(patchwork)
+
+# Create the combined plot
+combined_boxplots <- iucn_boxplot + fuse_boxplot + edge2_boxplot +
+  plot_layout(ncol = 3) +
+  plot_annotation(
+    title = "Species Range Protection Across Prioritisation Approaches",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 16))
+  )
+
+print(combined_boxplots)
+
+# Save the combined plot
+ggsave(here::here("outputs", "combined_boxplots_grid.png"),
+       combined_boxplots, width = 18, height = 6, dpi = 300)
+
+# Load required packages
+library(here)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# Define IUCN categories and colors
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+iucn_colors <- c(
+  "LC" = "#50C878",  # Green
+  "NT" = "#FFFF00",  # Yellow
+  "VU" = "#FFA500",  # Orange
+  "EN" = "#FF8C00",  # Dark Orange
+  "CR" = "#FF0000"   # Red
+)
+
+# Calculate sample sizes for each group
+iucn_n <- combined_data %>%
+  group_by(IUCN_original) %>%
+  summarise(n = n()) %>%
+  arrange(IUCN_original)
+
+fuse_n <- combined_data %>%
+  group_by(FUSE_original) %>%
+  summarise(n = n()) %>%
+  arrange(FUSE_original)
+
+edge2_n <- combined_data %>%
+  group_by(EDGE2_original) %>%
+  summarise(n = n()) %>%
+  arrange(EDGE2_original)
+
+# Create x-axis labels with sample sizes
+iucn_labels <- paste0(iucn_order, "\n(n=", iucn_n$n, ")")
+fuse_labels <- paste0(1:5, "\n(n=", fuse_n$n, ")")
+edge2_labels <- paste0(1:5, "\n(n=", edge2_n$n, ")")
+
+# 1. IUCN plot
+iucn_plot <- combined_data %>%
+  mutate(
+    IUCN_status = factor(IUCN_original, levels = 1:5, labels = iucn_order),
+    protection_percentage = IUCN_captain * 100
+  ) %>%
+  ggplot(aes(x = IUCN_status, y = protection_percentage)) +
+  #geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
+  #            trim = FALSE, 
+  #            alpha = 0.5) +
+  geom_jitter(width = 0.1, 
+              size = 0.4, 
+              alpha = 0.5, 
+              color = "darkgray") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+                  mean_val <- mean(x, na.rm = TRUE)
+                  sd_val <- sd(x, na.rm = TRUE)
+                  return(data.frame(y = mean_val, 
+                                   ymin = max(0, mean_val - sd_val),
+                                   ymax = min(100, mean_val + sd_val)))
+                },
+               geom = "errorbar", 
+               width = 0.1, 
+               color = "black") +
+  labs(
+       x = "IUCN Red List threat status", 
+       y = "Range protected (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  scale_x_discrete(limits = iucn_order, labels = iucn_labels) +
+  scale_fill_manual(values = iucn_colors) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_continuous(limits = c(0, 100),
+                     breaks = seq(0, 100, 25))
+
+# 2. FUSE plot
+fuse_plot <- combined_data %>%
+  mutate(
+    FUSE_category = factor(FUSE_original),
+    protection_percentage = FUSE_captain * 100
+  ) %>%
+  ggplot(aes(x = FUSE_category, y = protection_percentage)) +
+  #geom_violin(fill = "lightblue", 
+  #            color = "steelblue",
+  #            trim = FALSE, 
+  #            alpha = 0.5) +
+  geom_jitter(width = 0.1, 
+              size = 0.4, 
+              alpha = 0.5, 
+              color = "darkgray") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+                  mean_val <- mean(x, na.rm = TRUE)
+                  sd_val <- sd(x, na.rm = TRUE)
+                  return(data.frame(y = mean_val, 
+                                   ymin = max(0, mean_val - sd_val),
+                                   ymax = min(100, mean_val + sd_val)))
+                },
+               geom = "errorbar", 
+               width = 0.1, 
+               color = "black") +
+  labs(
+       x = "FUSE Score", 
+       y = "Range protected (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  scale_x_discrete(labels = fuse_labels) +
+  scale_y_continuous(limits = c(0, 100),
+                     breaks = seq(0, 100, 25))
+
+# 3. EDGE2 plot
+edge2_plot <- combined_data %>%
+  mutate(
+    EDGE2_category = factor(EDGE2_original),
+    protection_percentage = EDGE2_captain * 100
+  ) %>%
+  ggplot(aes(x = EDGE2_category, y = protection_percentage)) +
+  #geom_violin(fill = "lightcoral", 
+  #            color = "darkred",
+  #            trim = FALSE, 
+  #            alpha = 0.5) +
+  geom_jitter(width = 0.1, 
+              size = 0.4, 
+              alpha = 0.5, 
+              color = "darkgray") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+                  mean_val <- mean(x, na.rm = TRUE)
+                  sd_val <- sd(x, na.rm = TRUE)
+                  return(data.frame(y = mean_val, 
+                                   ymin = max(0, mean_val - sd_val),
+                                   ymax = min(100, mean_val + sd_val)))
+                },
+               geom = "errorbar", 
+               width = 0.1, 
+               color = "black") +
+  labs(
+       x = "EDGE2 Score", 
+       y = "Range protected (%)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  scale_x_discrete(labels = edge2_labels) +
+  scale_y_continuous(limits = c(0, 100),
+                     breaks = seq(0, 100, 25))
+
+# Display individual plots
+print(iucn_plot)
+print(fuse_plot)
+print(edge2_plot)
+
+# Combine using patchwork
+library(ggpubr)
+library(here)
+
+# Combine the three plots into a grid with one row and three columns
+# Add labels A, B, C
+combined_plots <- ggarrange(
+  iucn_plot,                          # Plot A
+  fuse_plot,                          # Plot B
+  edge2_plot,                         # Plot C
+  ncol = 3,                           # 3 columns
+  nrow = 1,                           # 1 row
+  labels = c("A", "B", "C"),          # Add labels to the plots
+  font.label = list(size = 14,        # Customize label font size
+                    face = "bold")    # Make labels bold
+)
+
+print(combined_plots)
+
+# Save plots
+ggsave(here::here("outputs", "iucn_protection_violin_styled.png"),
+       iucn_plot, width = 8, height = 6, dpi = 300, bg = "white")
+ggsave(here::here("outputs", "fuse_protection_violin_styled.png"),
+       fuse_plot, width = 8, height = 6, dpi = 300, bg = "white")
+ggsave(here::here("outputs", "edge2_protection_violin_styled.png"),
+       edge2_plot, width = 8, height = 6, dpi = 300, bg = "white")
+ggsave(here::here("outputs", "combined_protection_violin_styled.png"),
+       combined_plots, width = 20, height = 6, dpi = 300, bg = "white")
+
+# Calculate median, mean and sd protection by FUSE score
+fuse_medians <- combined_data %>%
+  group_by(FUSE_original) %>%
+  summarise(
+    n = n(),
+    median_protection = median(FUSE_captain * 100),
+    mean_protection = mean(FUSE_captain * 100),
+    sd_protection = sd(FUSE_captain * 100)
+  )
+
+print("Median protection by FUSE score:")
+print(fuse_medians)
+
+# Also check for IUCN and EDGE2
+iucn_medians <- combined_data %>%
+  group_by(IUCN_original) %>%
+  summarise(
+    n = n(),
+    median_protection = median(IUCN_captain * 100),
+    mean_protection = mean(IUCN_captain * 100)
+  )
+
+edge2_medians <- combined_data %>%
+  group_by(EDGE2_original) %>%
+  summarise(
+    n = n(),
+    median_protection = median(EDGE2_captain * 100),
+    mean_protection = mean(EDGE2_captain * 100)
+  )
+
+print("\nMedian protection by IUCN status:")
+print(iucn_medians)
+
+print("\nMedian protection by EDGE2 score:")
+print(edge2_medians)
+
+# Test for trend using Jonckheere-Terpstra test (better for ordered categories)
+library(clinfun)
+
+jt_fuse <- jonckheere.test(combined_data$FUSE_captain, 
+                           combined_data$FUSE_original, 
+                           alternative = "increasing")
+print("\nJonckheere-Terpstra test for FUSE trend:")
+print(jt_fuse)
+
+jt_iucn <- jonckheere.test(combined_data$IUCN_captain, 
+                           combined_data$IUCN_original, 
+                           alternative = "increasing")
+print("\nJonckheere-Terpstra test for IUCN trend:")
+print(jt_iucn)
+
+jt_edge2 <- jonckheere.test(combined_data$EDGE2_captain, 
+                            combined_data$EDGE2_original, 
+                            alternative = "increasing")
+print("\nJonckheere-Terpstra test for EDGE2 trend:")
+print(jt_edge2)
+
+# Create a nicely formatted table showing the ordered species
+species_table <- combined_data %>%
     dplyr::select(Species_captain, Species_original, IUCN_captain, FUSE_captain, EDGE2_captain, 
            IUCN_original, FUSE_original, EDGE2_original) %>%
     arrange(Species_original) %>%
@@ -1004,7 +1283,140 @@ cross_corr_wide <- cross_correlations %>%
 print("\nCross-correlation matrix (wide format):")
 print(cross_corr_wide)
 
+#Linear models for each approach :
+# Load required packages
+library(dplyr)
+library(lme4)
+library(lmerTest)  # For p-values
+library(car)       # For diagnostics
+
+# Prepare data with protection as percentage
+model_data <- combined_data %>%
+  mutate(
+    IUCN_status = IUCN_original,
+    FUSE_score = FUSE_original,
+    EDGE2_score = EDGE2_original,
+    IUCN_protection = IUCN_captain * 100,
+    FUSE_protection = FUSE_captain * 100,
+    EDGE2_protection = EDGE2_captain * 100
+  )
+
+# Model 1: IUCN protection ~ IUCN status (ordinal predictor)
+iucn_lm <- lm(IUCN_protection ~ IUCN_status, data = model_data)
+summary(iucn_lm)
+
+# Model 2: FUSE protection ~ FUSE score (ordinal predictor)
+fuse_lm <- lm(FUSE_protection ~ FUSE_score, data = model_data)
+summary(fuse_lm)
+
+# Model 3: EDGE2 protection ~ EDGE2 score (ordinal predictor)
+edge2_lm <- lm(EDGE2_protection ~ EDGE2_score, data = model_data)
+summary(edge2_lm)
+
+# Create summary table
+model_summary <- data.frame(
+  Approach = c("IUCN", "FUSE", "EDGE2"),
+  Slope = c(
+    coef(iucn_lm)[2],
+    coef(fuse_lm)[2],
+    coef(edge2_lm)[2]
+  ),
+  SE = c(
+    summary(iucn_lm)$coefficients[2, 2],
+    summary(fuse_lm)$coefficients[2, 2],
+    summary(edge2_lm)$coefficients[2, 2]
+  ),
+  t_value = c(
+    summary(iucn_lm)$coefficients[2, 3],
+    summary(fuse_lm)$coefficients[2, 3],
+    summary(edge2_lm)$coefficients[2, 3]
+  ),
+  P_value = c(
+    summary(iucn_lm)$coefficients[2, 4],
+    summary(fuse_lm)$coefficients[2, 4],
+    summary(edge2_lm)$coefficients[2, 4]
+  ),
+  R_squared = c(
+    summary(iucn_lm)$r.squared,
+    summary(fuse_lm)$r.squared,
+    summary(edge2_lm)$r.squared
+  ),
+  Adj_R_squared = c(
+    summary(iucn_lm)$adj.r.squared,
+    summary(fuse_lm)$adj.r.squared,
+    summary(edge2_lm)$adj.r.squared
+  )
+)
+
+print("Linear model summary (ordinal predictors):")
+print(model_summary)
+
+# Check model diagnostics
+par(mfrow = c(3, 2))
+plot(iucn_lm, which = 1:2, main = "IUCN")
+plot(fuse_lm, which = 1:2, main = "FUSE")
+plot(edge2_lm, which = 1:2, main = "EDGE2")
+
+# Test for heteroscedasticity (Breusch-Pagan test)
+library(lmtest)
+print("\nBreusch-Pagan test for heteroscedasticity:")
+print("IUCN:")
+print(bptest(iucn_lm))
+print("FUSE:")
+print(bptest(fuse_lm))
+print("EDGE2:")
+print(bptest(edge2_lm))
+
+# Visualize model fits
+library(ggplot2)
+
+# IUCN fit plot
+iucn_fit_plot <- ggplot(model_data, aes(x = IUCN_status, y = IUCN_protection)) +
+  geom_jitter(width = 0.1, alpha = 0.3, color = "darkgray") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "IUCN: Linear Model Fit",
+       x = "IUCN Status",
+       y = "Protection (%)") +
+  theme_minimal()
+
+# FUSE fit plot
+fuse_fit_plot <- ggplot(model_data, aes(x = FUSE_score, y = FUSE_protection)) +
+  geom_jitter(width = 0.1, alpha = 0.3, color = "darkgray") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "FUSE: Linear Model Fit",
+       x = "FUSE Score",
+       y = "Protection (%)") +
+  theme_minimal()
+
+# EDGE2 fit plot
+edge2_fit_plot <- ggplot(model_data, aes(x = EDGE2_score, y = EDGE2_protection)) +
+  geom_jitter(width = 0.1, alpha = 0.3, color = "darkgray") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "EDGE2: Linear Model Fit",
+       x = "EDGE2 Score",
+       y = "Protection (%)") +
+  theme_minimal()
+
+print(iucn_fit_plot)
+print(fuse_fit_plot)
+print(edge2_fit_plot)
+
+# Save results
+write.csv(model_summary, 
+          here::here("outputs", "linear_model_summary.csv"), 
+          row.names = FALSE)
+
+# Save plots
+ggsave(here::here("outputs", "iucn_model_fit.png"),
+       iucn_fit_plot, width = 8, height = 6, dpi = 300)
+ggsave(here::here("outputs", "fuse_model_fit.png"),
+       fuse_fit_plot, width = 8, height = 6, dpi = 300)
+ggsave(here::here("outputs", "edge2_model_fit.png"),
+       edge2_fit_plot, width = 8, height = 6, dpi = 300)
+
 ```
+
+Linear regression models examining the relationship between biodiversity metric scores and species-level protection revealed significant but modest effects (Table X). IUCN-based prioritisation showed a significant positive relationship with threat status (slope = 3.25% per category, SE = 0.77, p < 0.001, R² = 0.018), with species gaining an average of 3.25 percentage points of additional range protection for each increase in threat category. EDGE2-based prioritisation demonstrated the strongest targeting effect (slope = 12.14% per score unit, SE = 2.14, p < 0.001, R² = 0.031), with evolutionarily distinct species receiving substantially higher protection. In contrast, FUSE-based prioritisation showed no significant relationship with functional uniqueness scores (slope = 2.71% per unit, SE = 1.72, p = 0.116, R² = 0.002), likely reflecting the highly skewed distribution of functional scores with 89.4% of species in the lowest category. The modest R² values (1.8-3.1%) reflect the substantial influence of species' geographic distributions and spatial optimization dynamics on protection outcomes, with biodiversity metrics explaining a meaningful but limited portion of variance in species-level protection beyond biogeographic factors.
 
 ## Best-Approach Assignment Analysis
 
@@ -1631,7 +2043,106 @@ write.csv(correlation_results,
 write.csv(unique_percentages,
           here::here("outputs", "top20_unique_protection.csv"),
           row.names = FALSE)
+
+# --- Barplots of protection levels for all species (colored by IUCN category) ---
+
+library(ggplot2)
+library(dplyr)
+library(here)
+library(ggpubr)
+
+# Define IUCN categories and colors
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+iucn_colors <- c(
+  "LC" = "#50C878",  # Green
+  "NT" = "#FFFF00",  # Yellow
+  "VU" = "#FFA500",  # Orange
+  "EN" = "#FF8C00",  # Dark Orange
+  "CR" = "#FF0000"   # Red
+)
+
+# Ensure IUCN categories are text and ordered
+combined_data <- combined_data %>%
+  mutate(IUCN_category = case_when(
+    IUCN_original == 1 ~ "LC",
+    IUCN_original == 2 ~ "NT",
+    IUCN_original == 3 ~ "VU",
+    IUCN_original == 4 ~ "EN",
+    IUCN_original == 5 ~ "CR",
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(IUCN_category = factor(IUCN_category, levels = iucn_order))
+
+# Common theme
+base_theme <- theme_classic(base_size = 13) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "right",
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+# === IUCN ===
+p_iucn_bar <- ggplot(combined_data, aes(
+  x = IUCN_captain * 100,
+  y = reorder(Species_captain, IUCN_captain),
+  fill = IUCN_category
+)) +
+  geom_col() +
+  scale_fill_manual(values = iucn_colors, name = "IUCN Category") +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = "Species range prioritized (%)", y = "Species") + 
+  base_theme
+
+# === FUSE ===
+p_fuse_bar <- ggplot(combined_data, aes(
+  x = FUSE_captain * 100,
+  y = reorder(Species_captain, FUSE_captain),
+  fill = IUCN_category
+)) +
+  geom_col() +
+  scale_fill_manual(values = iucn_colors, name = "IUCN Category") +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = "Species range prioritized (%)", y = "Species") + 
+  base_theme
+
+# === EDGE2 ===
+p_edge2_bar <- ggplot(combined_data, aes(
+  x = EDGE2_captain * 100,
+  y = reorder(Species_captain, EDGE2_captain),
+  fill = IUCN_category
+)) +
+  geom_col() +
+  scale_fill_manual(values = iucn_colors, name = "IUCN Category") +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = "Species range prioritized (%)", y = "Species") + 
+  base_theme
+
+# === Combine all three ===
+combined_barplots <- ggarrange(
+  p_iucn_bar, p_fuse_bar, p_edge2_bar,
+  labels = c("A", "B", "C"),
+  ncol = 3,
+  nrow = 1,
+  common.legend = TRUE,
+  legend = "right"
+)
+
+# Display
+combined_barplots
+
+# === Save combined figure ===
+ggsave(
+  here::here("outputs", "combined_species_barplots.png"),
+  combined_barplots,
+  width = 12, height = 5, dpi = 300, bg = "white"
+)
+
 ```
+
+
+
 
 # Manuscript maps
 
