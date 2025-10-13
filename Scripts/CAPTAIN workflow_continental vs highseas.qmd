@@ -5129,7 +5129,7 @@ fishing_sf <- aggregated_data %>%
 st_crs(fishing_sf) <- st_crs(meow_ecos)
 
 # Perform spatial join to associate each fishing point with a realm
-fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% dplyr::select(REALM))
 
 # Calculate statistics by realm with 5th and 95th percentiles
 realm_statistics <- fishing_with_realm %>%
@@ -5184,7 +5184,7 @@ st_crs(fishing_sf) <- st_crs(meow_ecos)
 
 # Perform spatial join to associate each fishing point with an ecoregion
 # Changed from REALM to ECOREGION
-fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION))
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% dplyr::select(ECOREGION))
 
 # Calculate statistics by ecoregion with 5th and 95th percentiles
 # Changed from REALM to ECOREGION
@@ -5251,7 +5251,7 @@ eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TR
 # Fix EEZ geometries
 eez_fixed <- eez %>%
   st_make_valid() %>%
-  select(SOVEREIGN1)
+  dplyr::select(SOVEREIGN1)
 
 # Load priority datasets
 IUCN_P100_data <- readRDS(here::here("Data","IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
@@ -5269,10 +5269,10 @@ process_priority_data <- function(data, dataset_name) {
   st_crs(data_sf) <- st_crs(meow_ecos)
   
   # Join with REALM
-  data_with_realm <- st_join(data_sf, meow_ecos %>% select(REALM))
+  data_with_realm <- st_join(data_sf, meow_ecos %>% dplyr::select(REALM))
   
   # Join with ECOREGION
-  data_with_ecoregion <- st_join(data_sf, meow_ecos %>% select(ECOREGION, REALM))
+  data_with_ecoregion <- st_join(data_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
   
   # Join with country (EEZ)
   # Note: Using the fixed EEZ shapefile
@@ -5452,7 +5452,7 @@ load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
 meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
 eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE) %>%
   st_make_valid() %>%
-  select(SOVEREIGN1)
+  dplyr::select(SOVEREIGN1)
 
 # Load IUCN P100 priority data
 IUCN_P100_data <- readRDS(here::here("Data", "IUCN_P100_full_results_averaged_budget0.1_replicates10.rds"))
@@ -5468,7 +5468,7 @@ fishing_sf <- aggregated_data %>%
 st_crs(fishing_sf) <- st_crs(meow_ecos)
 
 # 1. Process fishing data for REALMS
-fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% select(REALM))
+fishing_with_realm <- st_join(fishing_sf, meow_ecos %>% dplyr::select(REALM))
 
 realm_fishing_stats <- fishing_with_realm %>%
   st_drop_geometry() %>%
@@ -5484,7 +5484,7 @@ realm_fishing_stats <- fishing_with_realm %>%
   arrange(desc(mean_fishing_hours))
 
 # 2. Process fishing data for ECOREGIONS
-fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% select(ECOREGION, REALM))
+fishing_with_ecoregion <- st_join(fishing_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
 
 ecoregion_fishing_stats <- fishing_with_ecoregion %>%
   st_drop_geometry() %>%
@@ -5526,7 +5526,7 @@ iucn_sf <- IUCN_P100_data %>%
 
 # 1. Process priority data for REALMS
 st_crs(iucn_sf) <- st_crs(meow_ecos)
-iucn_with_realm <- st_join(iucn_sf, meow_ecos %>% select(REALM))
+iucn_with_realm <- st_join(iucn_sf, meow_ecos %>% dplyr::select(REALM))
 
 realm_priority_stats <- iucn_with_realm %>%
   st_drop_geometry() %>%
@@ -5542,7 +5542,7 @@ realm_priority_stats <- iucn_with_realm %>%
   arrange(desc(mean_priority))
 
 # 2. Process priority data for ECOREGIONS
-iucn_with_ecoregion <- st_join(iucn_sf, meow_ecos %>% select(ECOREGION, REALM))
+iucn_with_ecoregion <- st_join(iucn_sf, meow_ecos %>% dplyr::select(ECOREGION, REALM))
 
 ecoregion_priority_stats <- iucn_with_ecoregion %>%
   st_drop_geometry() %>%

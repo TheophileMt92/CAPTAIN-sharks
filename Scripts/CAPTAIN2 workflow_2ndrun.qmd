@@ -1077,11 +1077,12 @@ combined_plots <- ggarrange(
   edge2_plot,                         # Plot C
   ncol = 3,                           # 3 columns
   nrow = 1,                           # 1 row
-  labels = c("A", "B", "C"),          # Add labels to the plots
+  labels = c("(A)", "(B)", "(C)"),    # Add labels to the plots
   font.label = list(size = 14,        # Customize label font size
-                    face = "bold")    # Make labels bold
+                    face = "bold",    # Make labels bold
+                    hjust = -2,
+                    vjust = 1.5)     # Move labels to the left (negative values move left)
 )
-
 print(combined_plots)
 
 # Save plots
@@ -1092,7 +1093,7 @@ ggsave(here::here("outputs", "fuse_protection_violin_styled.png"),
 ggsave(here::here("outputs", "edge2_protection_violin_styled.png"),
        edge2_plot, width = 8, height = 6, dpi = 300, bg = "white")
 ggsave(here::here("outputs", "combined_protection_violin_styled.png"),
-       combined_plots, width = 20, height = 6, dpi = 300, bg = "white")
+       combined_plots, width = 20, height = 6, dpi = 150, bg = "white")
 
 # Calculate median, mean and sd protection by FUSE score
 fuse_medians <- combined_data %>%
@@ -1357,6 +1358,13 @@ plot(iucn_lm, which = 1:2, main = "IUCN")
 plot(fuse_lm, which = 1:2, main = "FUSE")
 plot(edge2_lm, which = 1:2, main = "EDGE2")
 
+# Check residual normality
+shapiro.test(residuals(iucn_lm))
+shapiro.test(residuals(fuse_lm))
+shapiro.test(residuals(edge2_lm))
+
+#The Shapiro-Wilk tests show highly significant departures from normality (all p < 2.2e-16) for all three models, indicating clear violations of the normality assumption. This suggests you should use an alternative modeling approach.
+
 # Test for heteroscedasticity (Breusch-Pagan test)
 library(lmtest)
 print("\nBreusch-Pagan test for heteroscedasticity:")
@@ -1413,6 +1421,169 @@ ggsave(here::here("outputs", "fuse_model_fit.png"),
        fuse_fit_plot, width = 8, height = 6, dpi = 300)
 ggsave(here::here("outputs", "edge2_model_fit.png"),
        edge2_fit_plot, width = 8, height = 6, dpi = 300)
+
+#Beta regression 
+
+# Install and load required package
+install.packages("betareg")
+library(betareg)
+
+# Prepare data for beta regression
+# Beta regression requires values in (0,1) interval, excluding 0 and 1
+# Use Smithson & Verkuilen (2006) transformation for boundary cases
+model_data <- model_data %>%
+  mutate(
+    # Convert to (0,1) scale and handle boundaries
+    n_obs = n(),
+    IUCN_protection_beta = (IUCN_protection/100 * (n_obs - 1) + 0.5) / n_obs,
+    FUSE_protection_beta = (FUSE_protection/100 * (n_obs - 1) + 0.5) / n_obs,
+    EDGE2_protection_beta = (EDGE2_protection/100 * (n_obs - 1) + 0.5) / n_obs
+  )
+
+# Fit beta regression models
+iucn_beta <- betareg(IUCN_protection_beta ~ IUCN_status, data = model_data)
+fuse_beta <- betareg(FUSE_protection_beta ~ FUSE_score, data = model_data)
+edge2_beta <- betareg(EDGE2_protection_beta ~ EDGE2_score, data = model_data)
+
+# View summaries
+summary(iucn_beta)
+summary(fuse_beta)
+summary(edge2_beta)
+
+# Extract key statistics
+# Note: Beta regression uses pseudo-R² (squared correlation between fitted and observed)
+library(broom)
+
+# Get tidy summaries
+iucn_tidy <- tidy(iucn_beta)
+fuse_tidy <- tidy(fuse_beta)
+edge2_tidy <- tidy(edge2_beta)
+
+# Get pseudo R²
+iucn_r2 <- cor(predict(iucn_beta), model_data$IUCN_protection_beta)^2
+fuse_r2 <- cor(predict(fuse_beta), model_data$FUSE_protection_beta)^2
+edge2_r2 <- cor(predict(edge2_beta), model_data$EDGE2_protection_beta)^2
+
+# Create summary table
+beta_summary <- data.frame(
+  Approach = c("IUCN", "FUSE", "EDGE2"),
+  Coefficient = c(
+    iucn_tidy$estimate[2],
+    fuse_tidy$estimate[2],
+    edge2_tidy$estimate[2]
+  ),
+  SE = c(
+    iucn_tidy$std.error[2],
+    fuse_tidy$std.error[2],
+    edge2_tidy$std.error[2]
+  ),
+  z_value = c(
+    iucn_tidy$statistic[2],
+    fuse_tidy$statistic[2],
+    edge2_tidy$statistic[2]
+  ),
+  P_value = c(
+    iucn_tidy$p.value[2],
+    fuse_tidy$p.value[2],
+    edge2_tidy$p.value[2]
+  ),
+  Pseudo_R2 = c(iucn_r2, fuse_r2, edge2_r2)
+)
+
+print("Beta regression summary:")
+print(beta_summary)
+
+# Calculate marginal effects (average change in percentage per unit increase)
+library(margins)
+
+# Get marginal effects
+iucn_margins <- margins(iucn_beta)
+fuse_margins <- margins(fuse_beta)
+edge2_margins <- margins(edge2_beta)
+
+# Summary of marginal effects
+print("IUCN marginal effects:")
+summary(iucn_margins)
+
+print("FUSE marginal effects:")
+summary(fuse_margins)
+
+print("EDGE2 marginal effects:")
+summary(edge2_margins)
+
+# Alternative: Calculate predicted values and differences manually
+# This gives you the actual percentage change per category
+
+# IUCN predictions
+iucn_pred <- predict(iucn_beta, 
+                     newdata = data.frame(IUCN_status = 1:5),
+                     type = "response") * 100
+print("Predicted protection by IUCN category:")
+print(data.frame(Category = 1:5, 
+                 IUCN_Category = c("LC", "NT", "VU", "EN", "CR"),
+                 Predicted_Protection = round(iucn_pred, 2)))
+
+# Average increase per category
+iucn_avg_increase <- mean(diff(iucn_pred))
+print(paste("Average increase per IUCN category:", round(iucn_avg_increase, 2), "%"))
+
+# FUSE predictions
+fuse_pred <- predict(fuse_beta, 
+                     newdata = data.frame(FUSE_score = 1:5),
+                     type = "response") * 100
+print("Predicted protection by FUSE score:")
+print(data.frame(Score = 1:5, 
+                 Predicted_Protection = round(fuse_pred, 2)))
+
+# Average increase per unit
+fuse_avg_increase <- mean(diff(fuse_pred))
+print(paste("Average increase per FUSE unit:", round(fuse_avg_increase, 2), "%"))
+
+# EDGE2 predictions
+edge2_pred <- predict(edge2_beta, 
+                      newdata = data.frame(EDGE2_score = 1:5),
+                      type = "response") * 100
+print("Predicted protection by EDGE2 score:")
+print(data.frame(Score = 1:5, 
+                 Predicted_Protection = round(edge2_pred, 2)))
+
+# Average increase per unit
+edge2_avg_increase <- mean(diff(edge2_pred))
+print(paste("Average increase per EDGE2 unit:", round(edge2_avg_increase, 2), "%"))
+
+# Create comprehensive summary table
+comprehensive_summary <- data.frame(
+  Approach = c("IUCN", "FUSE", "EDGE2"),
+  Coefficient_logit = c(
+    iucn_tidy$estimate[2],
+    fuse_tidy$estimate[2],
+    edge2_tidy$estimate[2]
+  ),
+  SE = c(
+    iucn_tidy$std.error[2],
+    fuse_tidy$std.error[2],
+    edge2_tidy$std.error[2]
+  ),
+  z_value = c(
+    iucn_tidy$statistic[2],
+    fuse_tidy$statistic[2],
+    edge2_tidy$statistic[2]
+  ),
+  P_value = c(
+    iucn_tidy$p.value[2],
+    fuse_tidy$p.value[2],
+    edge2_tidy$p.value[2]
+  ),
+  Avg_percent_increase = c(
+    iucn_avg_increase,
+    fuse_avg_increase,
+    edge2_avg_increase
+  ),
+  Pseudo_R2 = c(iucn_r2, fuse_r2, edge2_r2)
+)
+
+print("Comprehensive beta regression summary:")
+print(comprehensive_summary)
 
 ```
 

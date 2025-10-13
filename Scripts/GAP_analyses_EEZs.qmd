@@ -2049,6 +2049,50 @@ model <- lm(percentage_in_ALL_MPA ~ iucn_GE, data=results_IUCN)
 coeftest(model, vcov=vcovHC(model, type="HC1"))
 summary(model)
 
+# Check normality of residuals
+shapiro.test(residuals(model))
+
+# Check diagnostic plots
+par(mfrow = c(2, 2))
+plot(model)
+
+#
+library(betareg)
+
+# Transform percentage to (0,1) with boundary correction
+results_IUCN <- results_IUCN %>%
+  mutate(
+    n_obs = n(),
+    mpa_coverage_beta = (percentage_in_ALL_MPA/100 * (n_obs - 1) + 0.5) / n_obs
+  )
+
+# Fit beta regression
+mpa_beta <- betareg(mpa_coverage_beta ~ iucn_GE, data = results_IUCN)
+summary(mpa_beta)
+
+# Get marginal effects
+library(margins)
+mpa_margins <- margins(mpa_beta)
+summary(mpa_margins)
+
+# Get predicted values by threat category
+mpa_pred <- predict(mpa_beta, 
+                    newdata = data.frame(iucn_GE = 1:5),
+                    type = "response") * 100
+
+print("Predicted MPA coverage by IUCN category:")
+print(data.frame(
+  Category = 1:5,
+  IUCN = c("LC", "NT", "VU", "EN", "CR"),
+  Predicted_Coverage = round(mpa_pred, 2)
+))
+
+# Average decrease per category
+avg_decrease <- mean(diff(mpa_pred))
+print(paste("Average decrease per threat category:", round(avg_decrease, 2), "%"))
+
+
+#
 library(ggplot2)
 library(dplyr)
 

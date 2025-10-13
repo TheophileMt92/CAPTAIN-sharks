@@ -32,7 +32,7 @@ library(readr)
 library(tidyr)
 
 # Read the CAPTAIN2 EDGE2 RDS file
-CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates100.rds"))
+CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates50.rds"))
 
 # Analyze non-zero cells in the prioritization output
 cat("Analyzing cells with non-zero priority values in CAPTAIN2 EDGE2 output:\n")
@@ -152,7 +152,7 @@ CAPTAIN2_EDGE2_plot <- ggplot() +
                          title.position = "top", title.hjust = 0.5)
   ) +
   labs(title = "Global Conservation Priorities",
-       subtitle = "CAPTAIN2 - EDGE2 Index, Budget: 0.1, Replicates: 100",
+       subtitle = "CAPTAIN2 - EDGE2 Index, Budget: 0.1, Replicates: 50",
        x = NULL, y = NULL) +
   my_theme_CAPTAIN2_EDGE2
 
@@ -161,7 +161,7 @@ print(CAPTAIN2_EDGE2_plot)
 
 # Save the plot
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_EDGE2_priorities_01.png"),
+  filename = here::here("outputs", "CAPTAIN2_2ndrun_EDGE2_priorities_01_2.png"),
   plot = CAPTAIN2_EDGE2_plot,
   width = 10,
   height = 6,
@@ -182,7 +182,7 @@ library(smoothr)
 library(raster)
 
 # Read the CAPTAIN2 FUSE RDS file
-CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_full_results_averaged_budget0.1_replicates100.rds"))
+CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_res_full_results_averaged_budget0.1_replicates50.rds"))
 
 # Load one of your input raster files to extract the correct grid structure
 # Use the same raster file for consistency
@@ -281,7 +281,7 @@ CAPTAIN2_FUSE_plot <- ggplot() +
                          title.position = "top", title.hjust = 0.5)
   ) +
   labs(title = "Global Conservation Priorities",
-       subtitle = "CAPTAIN2 - FUSE Index, Budget: 0.1, Replicates: 100",
+       subtitle = "CAPTAIN2 - FUSE Index, Budget: 0.1, Replicates: 50",
        x = NULL, y = NULL) +
   my_theme_CAPTAIN2_FUSE
 
@@ -290,7 +290,7 @@ print(CAPTAIN2_FUSE_plot)
 
 # Save the plot
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_FUSE_priorities_01.png"),
+  filename = here::here("outputs", "CAPTAIN2_FUSE_priorities_01_2.png"),
   plot = CAPTAIN2_FUSE_plot,
   width = 10,
   height = 6,
@@ -311,7 +311,7 @@ library(smoothr)
 library(raster)
 
 # Read the CAPTAIN2 IUCN RDS file
-CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates100.rds"))
+CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates50.rds"))
 
 # Load one of your input raster files to extract the correct grid structure
 # Use the same raster file for consistency
@@ -410,7 +410,7 @@ CAPTAIN2_IUCN_plot <- ggplot() +
                          title.position = "top", title.hjust = 0.5)
   ) +
   labs(title = "Global Conservation Priorities",
-       subtitle = "CAPTAIN2 - IUCN Index, Budget: 0.1, Replicates: 100",
+       subtitle = "CAPTAIN2 - IUCN Index, Budget: 0.1, Replicates: 50",
        x = NULL, y = NULL) +
   my_theme_CAPTAIN2_IUCN
 
@@ -419,7 +419,7 @@ print(CAPTAIN2_IUCN_plot)
 
 # Save the plot
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_IUCN_priorities_01.png"),
+  filename = here::here("outputs", "CAPTAIN2_IUCN_priorities_01_2.png"),
   plot = CAPTAIN2_IUCN_plot,
   width = 10,
   height = 6,
@@ -440,9 +440,9 @@ library(smoothr)
 library(raster)
 
 # Read all three index RDS files
-CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates100.rds"))
-CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates100.rds"))
-CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_full_results_averaged_budget0.1_replicates100.rds"))
+CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates50.rds"))
+CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates50.rds"))
+CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_res_full_results_averaged_budget0.1_replicates50.rds"))
 
 # Load one of your input raster files to extract the correct grid structure
 raster_file <- here::here("Data", "tif files continental", "Psammobatis_parvacauda.tif")
@@ -619,7 +619,7 @@ print(EDGE2_FUSE_plot)
 
 # Save all plots
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_FUSE_difference.png"),
+  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_FUSE_difference_2.png"),
   plot = IUCN_FUSE_plot,
   width = 10,
   height = 6,
@@ -628,7 +628,7 @@ ggsave(
 )
 
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_EDGE2_difference.png"),
+  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_EDGE2_difference_2.png"),
   plot = IUCN_EDGE2_plot,
   width = 10,
   height = 6,
@@ -637,7 +637,7 @@ ggsave(
 )
 
 ggsave(
-  filename = here::here("outputs", "CAPTAIN2_EDGE2_minus_FUSE_difference.png"),
+  filename = here::here("outputs", "CAPTAIN2_EDGE2_minus_FUSE_difference_2.png"),
   plot = EDGE2_FUSE_plot,
   width = 10,
   height = 6,
