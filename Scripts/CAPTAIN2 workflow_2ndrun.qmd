@@ -136,7 +136,9 @@ my_theme_CAPTAIN2_EDGE2 <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Create the plot
@@ -265,8 +267,9 @@ my_theme_CAPTAIN2_FUSE <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
-  )
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank())      # Add this line
 
 # Create the plot
 CAPTAIN2_FUSE_plot <- ggplot() +
@@ -394,7 +397,9 @@ my_theme_CAPTAIN2_IUCN <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Create the plot
@@ -563,7 +568,7 @@ IUCN_FUSE_plot <- ggplot() +
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(IUCN - FUSE)",
+    name = "Difference in Priority (IUCN - FUSE)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -583,7 +588,7 @@ IUCN_EDGE2_plot <- ggplot() +
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(IUCN - EDGE2)",
+    name = "Difference in Priority (IUCN - EDGE2)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -603,7 +608,7 @@ EDGE2_FUSE_plot <- ggplot() +
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(EDGE2 - FUSE)",
+    name = "Difference in Priority (EDGE2 - FUSE)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -934,37 +939,38 @@ iucn_plot <- combined_data %>%
     protection_percentage = IUCN_captain * 100
   ) %>%
   ggplot(aes(x = IUCN_status, y = protection_percentage)) +
-  #geom_violin(aes(fill = IUCN_status, color = IUCN_status), 
-  #            trim = FALSE, 
-  #            alpha = 0.5) +
-  geom_jitter(width = 0.1, 
-              size = 0.4, 
-              alpha = 0.5, 
+  geom_jitter(width = 0.1,
+              size = 0.4,
+              alpha = 0.5,
               color = "darkgray") +
-  stat_summary(fun = mean, 
-               geom = "point", 
-               size = 3, 
+  stat_summary(fun = mean,
+               geom = "point",
+               size = 3,
                color = "black") +
   stat_summary(fun.data = function(x) {
-                  mean_val <- mean(x, na.rm = TRUE)
-                  sd_val <- sd(x, na.rm = TRUE)
-                  return(data.frame(y = mean_val, 
+                 mean_val <- mean(x, na.rm = TRUE)
+                 sd_val <- sd(x, na.rm = TRUE)
+                 return(data.frame(y = mean_val,
                                    ymin = max(0, mean_val - sd_val),
                                    ymax = min(100, mean_val + sd_val)))
-                },
-               geom = "errorbar", 
-               width = 0.1, 
-               color = "black") +
+               },
+              geom = "errorbar",
+              width = 0.1,
+              color = "black") +
   labs(
-       x = "IUCN Red List threat status", 
+       x = "IUCN Red List threat status",
        y = "Range protected (%)") +
   theme_minimal() +
   theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
     legend.position = "none",
     panel.grid.major.x = element_blank(),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.background = element_rect(fill = "white", color = NA)
+    panel.background = element_rect(fill = "white", color = NA),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
   ) +
   scale_x_discrete(limits = iucn_order, labels = iucn_labels) +
   scale_fill_manual(values = iucn_colors) +
@@ -979,38 +985,38 @@ fuse_plot <- combined_data %>%
     protection_percentage = FUSE_captain * 100
   ) %>%
   ggplot(aes(x = FUSE_category, y = protection_percentage)) +
-  #geom_violin(fill = "lightblue", 
-  #            color = "steelblue",
-  #            trim = FALSE, 
-  #            alpha = 0.5) +
-  geom_jitter(width = 0.1, 
-              size = 0.4, 
-              alpha = 0.5, 
+  geom_jitter(width = 0.1,
+              size = 0.4,
+              alpha = 0.5,
               color = "darkgray") +
-  stat_summary(fun = mean, 
-               geom = "point", 
-               size = 3, 
+  stat_summary(fun = mean,
+               geom = "point",
+               size = 3,
                color = "black") +
   stat_summary(fun.data = function(x) {
-                  mean_val <- mean(x, na.rm = TRUE)
-                  sd_val <- sd(x, na.rm = TRUE)
-                  return(data.frame(y = mean_val, 
+                 mean_val <- mean(x, na.rm = TRUE)
+                 sd_val <- sd(x, na.rm = TRUE)
+                 return(data.frame(y = mean_val,
                                    ymin = max(0, mean_val - sd_val),
                                    ymax = min(100, mean_val + sd_val)))
-                },
-               geom = "errorbar", 
-               width = 0.1, 
-               color = "black") +
+               },
+              geom = "errorbar",
+              width = 0.1,
+              color = "black") +
   labs(
-       x = "FUSE Score", 
+       x = "FUSE Score",
        y = "Range protected (%)") +
   theme_minimal() +
   theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
     legend.position = "none",
     panel.grid.major.x = element_blank(),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.background = element_rect(fill = "white", color = NA)
+    panel.background = element_rect(fill = "white", color = NA),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
   ) +
   scale_x_discrete(labels = fuse_labels) +
   scale_y_continuous(limits = c(0, 100),
@@ -1023,38 +1029,38 @@ edge2_plot <- combined_data %>%
     protection_percentage = EDGE2_captain * 100
   ) %>%
   ggplot(aes(x = EDGE2_category, y = protection_percentage)) +
-  #geom_violin(fill = "lightcoral", 
-  #            color = "darkred",
-  #            trim = FALSE, 
-  #            alpha = 0.5) +
-  geom_jitter(width = 0.1, 
-              size = 0.4, 
-              alpha = 0.5, 
+  geom_jitter(width = 0.1,
+              size = 0.4,
+              alpha = 0.5,
               color = "darkgray") +
-  stat_summary(fun = mean, 
-               geom = "point", 
-               size = 3, 
+  stat_summary(fun = mean,
+               geom = "point",
+               size = 3,
                color = "black") +
   stat_summary(fun.data = function(x) {
-                  mean_val <- mean(x, na.rm = TRUE)
-                  sd_val <- sd(x, na.rm = TRUE)
-                  return(data.frame(y = mean_val, 
+                 mean_val <- mean(x, na.rm = TRUE)
+                 sd_val <- sd(x, na.rm = TRUE)
+                 return(data.frame(y = mean_val,
                                    ymin = max(0, mean_val - sd_val),
                                    ymax = min(100, mean_val + sd_val)))
-                },
-               geom = "errorbar", 
-               width = 0.1, 
-               color = "black") +
+               },
+              geom = "errorbar",
+              width = 0.1,
+              color = "black") +
   labs(
-       x = "EDGE2 Score", 
+       x = "EDGE2 Score",
        y = "Range protected (%)") +
   theme_minimal() +
   theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
     legend.position = "none",
     panel.grid.major.x = element_blank(),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.background = element_rect(fill = "white", color = NA)
+    panel.background = element_rect(fill = "white", color = NA),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
   ) +
   scale_x_discrete(labels = edge2_labels) +
   scale_y_continuous(limits = c(0, 100),
@@ -2323,11 +2329,11 @@ ggsave(
 CAPTAIN2_EDGE2_msmap <- ggplot() +
   geom_sf(data = CAPTAIN2_EDGE2_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
   geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
-  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
     values = c(0, 0.5, 1),
-    name = "Priority",
+    name = "Priority EDGE2",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2340,11 +2346,11 @@ CAPTAIN2_EDGE2_msmap
 CAPTAIN2_FUSE_msmap <- ggplot() +
   geom_sf(data = CAPTAIN2_FUSE_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
   geom_sf(data = world_projected_CAPTAIN2_FUSE, fill = "lightgrey", color = "lightgrey", size = 0.1) +
-  geom_sf(data = globe_border_CAPTAIN2_FUSE, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border_CAPTAIN2_FUSE, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
     values = c(0, 0.5, 1),
-    name = "Priority",
+    name = "Priority FUSE",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2357,11 +2363,11 @@ CAPTAIN2_FUSE_msmap
 CAPTAIN2_IUCN_msmap <- ggplot() +
   geom_sf(data = CAPTAIN2_IUCN_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
   geom_sf(data = world_projected_CAPTAIN2_IUCN, fill = "lightgrey", color = "lightgrey", size = 0.1) +
-  geom_sf(data = globe_border_CAPTAIN2_IUCN, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border_CAPTAIN2_IUCN, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = c("white", "yellow", "darkblue"),
     values = c(0, 0.5, 1),
-    name = "Priority",
+    name = "Priority IUCN",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2399,7 +2405,7 @@ grid1 <- CAPTAIN2_IUCN_msmap_labeled /
 grid1
 
 # Save the grids if needed
-ggsave(here::here("grid1_maps_continental_2ndrun.png"), grid1, width = 8, height = 15, dpi = 300)
+ggsave(here::here("grid1_maps_continental_2ndrun_new.png"), grid1, width = 8, height = 15, dpi = 300)
 
 ```
 
@@ -2411,13 +2417,13 @@ IUCN_FUSE_msmap <- ggplot() +
   geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
   geom_sf(data = IUCN_FUSE_diff, aes(color = IUCN_minus_FUSE), size = 0.5) +
   geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
-  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = diff_colors,
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(IUCN - FUSE)",
+    name = "Difference in Priority (IUCN - FUSE)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2431,13 +2437,13 @@ IUCN_EDGE2_msmap <- ggplot() +
   geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
   geom_sf(data = IUCN_EDGE2_diff, aes(color = IUCN_minus_EDGE2), size = 0.5) +
   geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
-  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = diff_colors,
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(IUCN - EDGE2)",
+    name = "Difference in Priority (IUCN - EDGE2)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2451,13 +2457,13 @@ EDGE2_FUSE_msmap <- ggplot() +
   geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
   geom_sf(data = EDGE2_FUSE_diff, aes(color = EDGE2_minus_FUSE), size = 0.5) +
   geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
-  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_gradientn(
     colors = diff_colors,
     limits = c(-1, 1),
     breaks = seq(-1, 1, by = 0.25),
     labels = as.character(seq(-1, 1, by = 0.25)),
-    name = "Difference in Priority\n(EDGE2 - FUSE)",
+    name = "Difference in Priority (EDGE2 - FUSE)",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
                          title.position = "top", title.hjust = 0.5)
   ) +
@@ -2494,9 +2500,236 @@ grid2 <- IUCN_FUSE_msmap_labeled /
 grid2
 
 # Save the grids if needed
-ggsave(here::here("grid2_maps_continental_2ndrun.png"), grid2, width = 8, height = 15, dpi = 300)
+ggsave(here::here("grid3_maps_continental_2ndrun.png"), grid2, width = 16, height = 15, dpi = 300)
 
 ```
+
+### Combined individual and difference maps
+
+```{r}
+
+library(patchwork)
+
+# Add labels to each plot
+# First grid
+CAPTAIN2_IUCN_msmap_labeled <- add_panel_labels(CAPTAIN2_IUCN_msmap, "A")
+CAPTAIN2_FUSE_msmap_labeled <- add_panel_labels(CAPTAIN2_FUSE_msmap, "B")
+CAPTAIN2_EDGE2_msmap_labeled <- add_panel_labels(CAPTAIN2_EDGE2_msmap, "C")
+
+# Second grid
+IUCN_FUSE_msmap_labeled <- add_panel_labels(IUCN_FUSE_msmap, "D")
+IUCN_EDGE2_msmap_labeled <- add_panel_labels(IUCN_EDGE2_msmap, "E")
+EDGE2_FUSE_msmap_labeled <- add_panel_labels(EDGE2_FUSE_msmap, "F")
+
+# Create each grid (3 rows, 1 column)
+grid1 <- CAPTAIN2_IUCN_msmap_labeled /
+         CAPTAIN2_FUSE_msmap_labeled /
+         CAPTAIN2_EDGE2_msmap_labeled
+
+grid2 <- IUCN_FUSE_msmap_labeled /
+         IUCN_EDGE2_msmap_labeled /
+         EDGE2_FUSE_msmap_labeled
+
+# Combine the two grids side by side (2 columns)
+combined_grid <- grid1 | grid2
+
+# Display the combined grid
+combined_grid
+
+# If you want to save it
+ggsave(
+  filename = here::here("outputs", "combined_priority_maps.png"),
+  plot = combined_grid,
+  width = 10,    # Adjust width as needed for two columns
+  height = 12,   # Adjust height as needed for three rows
+  dpi = 300,
+  bg = "white"
+)
+```
+
+### 0.9 value maps 
+
+```{r}
+# Filter for high priority cells (>0.9) and calculate percentages
+library(dplyr)
+library(sf)
+library(egg)
+library(patchwork)
+
+# Calculate total coastal cells and high-priority cells for each index
+# IUCN
+CAPTAIN2_IUCN_high <- CAPTAIN2_IUCN_sf %>% 
+  filter(Priority > 0.9)
+iucn_total_cells <- nrow(CAPTAIN2_IUCN_sf)
+iucn_high_cells <- nrow(CAPTAIN2_IUCN_high)
+iucn_percent <- round((iucn_high_cells / iucn_total_cells) * 100, 1)
+
+# FUSE
+CAPTAIN2_FUSE_high <- CAPTAIN2_FUSE_sf %>% 
+  filter(Priority > 0.9)
+fuse_total_cells <- nrow(CAPTAIN2_FUSE_sf)
+fuse_high_cells <- nrow(CAPTAIN2_FUSE_high)
+fuse_percent <- round((fuse_high_cells / fuse_total_cells) * 100, 1)
+
+# EDGE2
+CAPTAIN2_EDGE2_high <- CAPTAIN2_EDGE2_sf %>% 
+  filter(Priority > 0.9)
+edge2_total_cells <- nrow(CAPTAIN2_EDGE2_sf)
+edge2_high_cells <- nrow(CAPTAIN2_EDGE2_high)
+edge2_percent <- round((edge2_high_cells / edge2_total_cells) * 100, 1)
+
+# Print results
+cat("IUCN: ", iucn_high_cells, " cells (", iucn_percent, "%) with priority >0.9\n", sep="")
+cat("FUSE: ", fuse_high_cells, " cells (", fuse_percent, "%) with priority >0.9\n", sep="")
+cat("EDGE2: ", edge2_high_cells, " cells (", edge2_percent, "%) with priority >0.9\n", sep="")
+
+# Create maps showing only high-priority cells (>0.9) - SAME STYLE AS CONGRUENT MAP
+CAPTAIN2_IUCN_high_map <- ggplot() +
+  geom_sf(data = CAPTAIN2_IUCN_high, aes(fill = "High Priority"), 
+          color = "darkblue", size = 0.8, alpha = 0.8) +
+  geom_sf(data = world_projected_CAPTAIN2_IUCN, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_IUCN, fill = NA, color = "black", size = 0.5) +
+  scale_fill_manual(values = c("High Priority" = "darkblue"),
+                    name = "Priority Areas") +
+  labs(subtitle = paste0(iucn_percent, "% of coastal cells"),
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_IUCN +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+
+CAPTAIN2_FUSE_high_map <- ggplot() +
+  geom_sf(data = CAPTAIN2_FUSE_high, aes(fill = "High Priority"), 
+          color = "darkblue", size = 0.8, alpha = 0.8) +
+  geom_sf(data = world_projected_CAPTAIN2_FUSE, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_FUSE, fill = NA, color = "black", size = 0.5) +
+  scale_fill_manual(values = c("High Priority" = "darkblue"),
+                    name = "Priority Areas") +
+  labs(subtitle = paste0(fuse_percent, "% of coastal cells"),
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_FUSE +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+
+CAPTAIN2_EDGE2_high_map <- ggplot() +
+  geom_sf(data = CAPTAIN2_EDGE2_high, aes(fill = "High Priority"), 
+          color = "darkblue", size = 0.8, alpha = 0.8) +
+  geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "black", size = 0.5) +
+  scale_fill_manual(values = c("High Priority" = "darkblue"),
+                    name = "Priority Areas") +
+  labs(subtitle = paste0(edge2_percent, "% of coastal cells"),
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_EDGE2 +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+
+# Add panel labels
+CAPTAIN2_IUCN_high_labeled <- add_panel_labels(CAPTAIN2_IUCN_high_map, "A")
+CAPTAIN2_FUSE_high_labeled <- add_panel_labels(CAPTAIN2_FUSE_high_map, "B")
+CAPTAIN2_EDGE2_high_labeled <- add_panel_labels(CAPTAIN2_EDGE2_high_map, "C")
+
+# Combine
+grid_high_priority <- CAPTAIN2_IUCN_high_labeled /
+                      CAPTAIN2_FUSE_high_labeled /
+                      CAPTAIN2_EDGE2_high_labeled
+
+grid_high_priority
+
+# Save
+ggsave(here::here("grid_high_priority_maps.png"), grid_high_priority, 
+       width = 8, height = 15, dpi = 300)
+```
+
+### Ecoregions with high priority
+
+```{r}
+# Load marine ecoregion shapefile (if not already loaded)
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# Make sure CRS matches for all datasets
+st_crs(CAPTAIN2_IUCN_high) <- st_crs(meow_ecos)
+st_crs(CAPTAIN2_FUSE_high) <- st_crs(meow_ecos)
+st_crs(CAPTAIN2_EDGE2_high) <- st_crs(meow_ecos)
+
+#---------------------- HIGH PRIORITY CELLS BY ECOREGION ----------------------#
+
+# IUCN - Process high-priority cells for ECOREGIONS
+IUCN_with_ecoregion <- st_join(CAPTAIN2_IUCN_high, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+
+iucn_ecoregion_stats <- IUCN_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    n_high_priority_cells = n(),
+    mean_priority = mean(Priority, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(n_high_priority_cells))
+
+iucn_n_ecoregions <- nrow(iucn_ecoregion_stats)
+iucn_top3 <- head(iucn_ecoregion_stats, 3)
+
+# FUSE - Process high-priority cells for ECOREGIONS
+FUSE_with_ecoregion <- st_join(CAPTAIN2_FUSE_high, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+
+fuse_ecoregion_stats <- FUSE_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    n_high_priority_cells = n(),
+    mean_priority = mean(Priority, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(n_high_priority_cells))
+
+fuse_n_ecoregions <- nrow(fuse_ecoregion_stats)
+fuse_top3 <- head(fuse_ecoregion_stats, 3)
+
+# EDGE2 - Process high-priority cells for ECOREGIONS
+EDGE2_with_ecoregion <- st_join(CAPTAIN2_EDGE2_high, meow_ecos %>% dplyr::select(ECOREGION, REALM))
+
+edge2_ecoregion_stats <- EDGE2_with_ecoregion %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION, REALM) %>%
+  summarize(
+    n_high_priority_cells = n(),
+    mean_priority = mean(Priority, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(ECOREGION)) %>%
+  arrange(desc(n_high_priority_cells))
+
+edge2_n_ecoregions <- nrow(edge2_ecoregion_stats)
+edge2_top3 <- head(edge2_ecoregion_stats, 3)
+
+#---------------------- PRINT RESULTS ----------------------#
+
+cat("\n=== HIGH PRIORITY CELLS BY ECOREGION ===\n\n")
+
+cat("IUCN: ", iucn_n_ecoregions, " ecoregions with high-priority cells (>0.9)\n", sep="")
+cat("Top 3 ecoregions:\n")
+print(iucn_top3 %>% dplyr::select(ECOREGION, REALM, n_high_priority_cells))
+
+cat("\n")
+
+cat("FUSE: ", fuse_n_ecoregions, " ecoregions with high-priority cells (>0.9)\n", sep="")
+cat("Top 3 ecoregions:\n")
+print(fuse_top3 %>% dplyr::select(ECOREGION, REALM, n_high_priority_cells))
+
+cat("\n")
+
+cat("EDGE2: ", edge2_n_ecoregions, " ecoregions with high-priority cells (>0.9)\n", sep="")
+cat("Top 3 ecoregions:\n")
+print(edge2_top3 %>% dplyr::select(ECOREGION, REALM, n_high_priority_cells))
+
+# Optional: Save the full ecoregion statistics
+write.csv(iucn_ecoregion_stats, here("output", "IUCN_high_priority_ecoregions.csv"), row.names = FALSE)
+write.csv(fuse_ecoregion_stats, here("output", "FUSE_high_priority_ecoregions.csv"), row.names = FALSE)
+write.csv(edge2_ecoregion_stats, here("output", "EDGE2_high_priority_ecoregions.csv"), row.names = FALSE)
+```
+
 
 ## Congruence maps
 
@@ -2504,7 +2737,7 @@ ggsave(here::here("grid2_maps_continental_2ndrun.png"), grid2, width = 8, height
 # Method 1: If you have separate dataframes for each index
 # Assuming your data has columns: PUID, Priority, and geometry
 
-# First, identify high priority areas (>0.9) for each index
+# Fxirst, identify high priority areas (>0.9) for each index
 high_priority_EDGE2 <- CAPTAIN2_EDGE2_sf[CAPTAIN2_EDGE2_sf$Priority > 0.9, ]
 high_priority_FUSE <- CAPTAIN2_FUSE_sf[CAPTAIN2_FUSE_sf$Priority > 0.9, ]
 high_priority_IUCN <- CAPTAIN2_IUCN_sf[CAPTAIN2_IUCN_sf$Priority > 0.9, ]
@@ -3698,7 +3931,9 @@ my_theme <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Convert richness data to sf points for proper clipping
