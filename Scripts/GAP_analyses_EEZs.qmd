@@ -220,7 +220,9 @@ my_theme <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Calculate the data range for better color scaling
@@ -234,7 +236,7 @@ nt_map_projected <- ggplot() +
   geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
   scale_color_viridis_c(
     option = "viridis",
-    name = "Mean % range in\nNo-Take MPAs",
+    name = "Mean % range in\nno-take MPAs",
     trans = "sqrt",  # Use "log10" for log scale
     breaks = color_breaks,
     guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
@@ -1815,7 +1817,9 @@ my_theme <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Create plot for continental waters
@@ -3439,6 +3443,114 @@ ggsave(
 )
 ```
 
+### Point chart : no-take ms chart
+
+```{r}
+library(tidyverse)
+library(ggridges)
+
+# 1. First prepare the IUCN data and function
+prepare_iucn_data <- function(species_data, species_col) {
+  IUCN <- readRDS(here::here("Data","GAP analyses","sharks_iucn_final.RDS"))
+  IUCN$species <- gsub("_", " ", IUCN$Species)
+  
+  # Rename the species column in the input data to match
+  species_data <- species_data %>%
+    dplyr::rename(species = all_of(species_col))
+  
+  results_IUCN <- left_join(IUCN, species_data, by="species") %>%
+    mutate(IUCN_status = case_when(
+      iucn_GE == 0 ~ "LC",
+      iucn_GE == 1 ~ "NT",
+      iucn_GE == 2 ~ "VU",
+      iucn_GE == 3 ~ "EN",
+      iucn_GE == 4 ~ "CR",
+      TRUE ~ "Unknown"
+    )) %>%
+    filter(IUCN_status != "Unknown")
+  
+  return(results_IUCN)
+}
+
+# 2. Prepare all datasets
+mpa_data <- results %>%
+  dplyr::select(species, percentage_in_ALL_MPA, percentage_in_NT_MPA) %>%
+  dplyr::rename(Species = species)
+
+# 3. Create separate dataframes with IUCN status
+# Get only the no-take MPAs data directly
+notake_mpa_iucn <- prepare_iucn_data(mpa_data, "Species") %>%
+  dplyr::select(species, IUCN_status, percentage_in_NT_MPA) %>%
+  rename(protection = percentage_in_NT_MPA)
+
+# 6. Create the plot
+iucn_colors <- c(
+  "CR" = "#D81E05",
+  "EN" = "#FC7F3F",
+  "VU" = "#FEC748",
+  "NT" = "#58AFFF",
+  "LC" = "#38AB38"
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+# Modified plot with colored points instead of violins
+rdplot_points = ggplot(notake_mpa_iucn, 
+       aes(x = factor(IUCN_status, levels = iucn_order), 
+           y = protection)) +
+  geom_jitter(aes(color = IUCN_status),
+              width = 0.2, 
+              size = 1.5, 
+              alpha = 0.6) +
+  # Mean and SD statistics
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+                  mean_val <- mean(x, na.rm = TRUE)
+                  sd_val <- sd(x, na.rm = TRUE)
+                  return(data.frame(y = mean_val, 
+                                   ymin = max(0, mean_val - sd_val),
+                                   ymax = mean_val + sd_val))
+                },
+               geom = "errorbar", 
+               width = 0.1, 
+               color = "black") +
+  labs(x = "IUCN Red List threat status", 
+       y = "(%) Range within no-take MPAs") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank()
+  ) +
+  scale_x_discrete(limits = iucn_order) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0, 50),
+               breaks = seq(0, 50, 10),
+               labels = c("0", "10", "20", "30", "40", ""))
+
+rdplot_points
+
+# Add white background to the plot
+rdplot_points_white = rdplot_points + 
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+# Save only PNG with white background
+ggsave(
+  filename = here::here("outputs","notake_mpa_protection_points.png"),
+  plot = rdplot_points_white,
+  width = 6,
+  height = 5,
+  dpi = 300,
+  bg = "white"
+)
+```
+
 ### Grid of Fig. 1
 
 ```{r}
@@ -3473,6 +3585,41 @@ ggsave(
 
 # Print a message to confirm the save
 message("Figure saved as: ", output_path)
+```
+
+### Grid of Fig. 1 and Fig. 2
+
+```{r}
+
+# Load the necessary libraries
+library(ggpubr)
+library(here)
+
+final_plot_combined = ggarrange(
+  rdplot_points_white,                       # Plot A
+  nt_map_projected,
+  stacked_bar_chart,                  # Plot A
+  continental_plot_NT,
+  nrow = 4,
+  ncol = 1, 
+  labels = c("(A)", "(B)", "(C)", "(D)"),
+  heights = c(1, 1.5, 0.5, 1.5), 
+  font.label = list(size = 16, face = "bold"),
+  vjust = 1,
+  hjust = -0.1)
+
+# Define the output path using `here`
+output_path <- here::here("outputs", "Fig_1_combined_points.png")
+
+# Save the final plot using `ggsave`
+ggsave(
+  filename = output_path,    # File path for saving
+  plot = final_plot_combined,         # The combined plot
+  width = 8,                 # Width of the output (in inches)
+  height = 17.35,               # Height of the output (in inches)
+  dpi = 300, # Resolution (300 DPI for high quality)
+  bg = "white", 
+)
 ```
 
 # Relate to species traits
