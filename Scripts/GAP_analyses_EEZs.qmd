@@ -751,42 +751,48 @@ significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
     filter(z_score < -z_threshold) %>% 
     arrange(z_score)
   
-  top_5_over <- over_represented %>% 
+  top_10_over <- over_represented %>% 
     dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
-    head(5)
+    head(10)
   
-  top_5_under <- under_represented %>% 
+  top_10_under <- under_represented %>% 
     dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>% 
-    head(5)
+    head(10)
   
   combined_table <- bind_rows(
-    mutate(top_5_over, representation = "Over-represented"),
-    mutate(top_5_under, representation = "Under-represented")
+    top_10_over,
+    top_10_under
   ) %>%
     mutate(across(where(is.numeric), ~round(., 2)))
   
   kable_output <- kable(combined_table, format = "html", 
-        col.names = c("Species", "Actual %", "Random %", "Difference", "Z-score", "Representation"),
-        caption = paste("Top 5 Significantly Over/Under-represented Species in", mpa_type, "MPAs")) %>%
+        col.names = c("Species", "Actual %", "Random %", "Difference", "SES"),  # Changed from "Z-score" to "SES"
+        caption = paste("Top 10 Significantly Over/Under-represented Species in", mpa_type, "MPAs")) %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
                   full_width = FALSE) %>%
     column_spec(1, width = "200px") %>%
     column_spec(2:5, width = "100px") %>%
-    column_spec(6, width = "150px") %>%
     row_spec(0, bold = TRUE) %>%
-    pack_rows("Over-represented", 1, 5, label_row_css = "background-color: #e6f3ff; color: #000;") %>%
-    pack_rows("Under-represented", 6, 10, label_row_css = "background-color: #fff0e6; color: #000;")
+    pack_rows("Over-represented", 1, 10, label_row_css = "background-color: #e6f3ff; color: #000;") %>%
+    pack_rows("Under-represented", 11, 20, label_row_css = "background-color: #fff0e6; color: #000;")
   
   footnote_text <- paste(
     "Total significantly over-represented species:", nrow(over_represented), "\n",
     "Total significantly under-represented species:", nrow(under_represented)
   )
   
-  kable_output %>%
+  kable_output <- kable_output %>%
     footnote(general = footnote_text, general_title = "Note:")
+  
+  # Save as PNG
+  save_kable(kable_output, 
+             file = here::here("outputs", paste0("significant_species_", mpa_type, ".png")),
+             zoom = 2)
+  
+  return(kable_output)
 }
 
-# Identify significant species
+# Identify significant species and save as PNG
 significant_species(comparison_ALL, "ALL")
 significant_species(comparison_NT, "No-Take")
 
@@ -813,7 +819,7 @@ stacked_bar_chart = ggplot(summary_NT, aes(x = 1, y = Percentage, fill = Represe
                                "Under-represented" = "#E69F00"),
                     # Reverse the order of legend items
                     breaks = c("Under-represented", "Equally represented", "Over-represented")) +
-  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+  geom_text(aes(label = sprintf("%.2f%%", Percentage)), 
             position = position_stack(vjust = 0.5),
             color = "black", size = 4) +
   coord_flip() +
@@ -1041,7 +1047,7 @@ filtered_data <- combined_iucn_summary %>%
 # Create a bar plot comparing IUCN distributions (excluding "Under-represented (All MPAs)")
 iucn_plot_NT <- ggplot(filtered_data, aes(x = IUCN_status, y = percentage, fill = title)) +
   geom_bar(stat = "identity", position = "dodge") +
-  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
             position = position_dodge(width = 0.9), 
             vjust = -0.5, 
             size = 3) +
@@ -3499,7 +3505,7 @@ rdplot_points = ggplot(notake_mpa_iucn,
        aes(x = factor(IUCN_status, levels = iucn_order), 
            y = protection)) +
   geom_jitter(aes(color = IUCN_status),
-              width = 0.2, 
+              width = 0.1, 
               size = 1.5, 
               alpha = 0.6) +
   # Mean and SD statistics
@@ -3603,13 +3609,13 @@ final_plot_combined = ggarrange(
   nrow = 4,
   ncol = 1, 
   labels = c("(A)", "(B)", "(C)", "(D)"),
-  heights = c(1, 1.5, 0.5, 1.5), 
+  heights = c(0.8, 1.5, 0.4, 1.5), 
   font.label = list(size = 16, face = "bold"),
   vjust = 1,
   hjust = -0.1)
 
 # Define the output path using `here`
-output_path <- here::here("outputs", "Fig_1_combined_points.png")
+output_path <- here::here("outputs", "Fig_1_combined_points_2.png")
 
 # Save the final plot using `ggsave`
 ggsave(

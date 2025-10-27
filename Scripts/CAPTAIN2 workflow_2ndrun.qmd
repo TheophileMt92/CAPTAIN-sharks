@@ -2957,7 +2957,7 @@ if (nrow(high_priority_data) > 0) {
   category_percentages <- round(prop.table(category_counts) * 100, 1)
   
   for(i in 1:length(category_counts)) {
-    cat(sprintf("%-20s: %4d points (%4.1f%%)\n", 
+    cat(sprintf("%-20s: %4d points (%4.2f%%)\n", 
                 names(category_counts)[i], 
                 category_counts[i], 
                 category_percentages[i]))
