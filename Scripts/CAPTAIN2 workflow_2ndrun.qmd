@@ -2318,9 +2318,6 @@ ggsave(
 
 ```
 
-
-
-
 # Manuscript maps
 
 ### Individual maps
@@ -2788,7 +2785,7 @@ congruent_map <- ggplot() +
   scale_fill_manual(values = c("Congruent High Priority" = "red"),
                     name = "Priority Areas") +
   labs(title = "Congruent High Priority Areas",
-       subtitle = "Areas with Priority > 0.9 in EDGE2, FUSE, and IUCN indices",
+       subtitle = "Areas with Priority > 0.9 in IUCN, FUSE and EDGE2 dimensions",
        x = NULL, y = NULL) +
   my_theme_CAPTAIN2_EDGE2
 
@@ -2808,25 +2805,28 @@ IUCN_high <- combined_priorities$Priority_IUCN > 0.9
 # Create detailed congruence categories
 combined_priorities$congruence_category <- case_when(
   EDGE2_high & FUSE_high & IUCN_high ~ "All three indices",
-  EDGE2_high & FUSE_high & !IUCN_high ~ "EDGE2 + FUSE",
-  EDGE2_high & !FUSE_high & IUCN_high ~ "EDGE2 + IUCN", 
-  !EDGE2_high & FUSE_high & IUCN_high ~ "FUSE + IUCN",
-  EDGE2_high & !FUSE_high & !IUCN_high ~ "EDGE2 only",
-  !EDGE2_high & FUSE_high & !IUCN_high ~ "FUSE only",
+  !EDGE2_high & FUSE_high & IUCN_high ~ "IUCN + FUSE",      # Changed from "FUSE + IUCN"
+  EDGE2_high & !FUSE_high & IUCN_high ~ "IUCN + EDGE2",     # Changed from "EDGE2 + IUCN"
+  EDGE2_high & FUSE_high & !IUCN_high ~ "FUSE + EDGE2",     # Changed from "EDGE2 + FUSE"
   !EDGE2_high & !FUSE_high & IUCN_high ~ "IUCN only",
+  !EDGE2_high & FUSE_high & !IUCN_high ~ "FUSE only",
+  EDGE2_high & !FUSE_high & !IUCN_high ~ "EDGE2 only",
   TRUE ~ "No high priority"
 )
 
 # Convert to factor with desired order
-combined_priorities$congruence_category <- factor(combined_priorities$congruence_category,
-                                                 levels = c("All three indices", 
-                                                           "EDGE2 + FUSE", "EDGE2 + IUCN", "FUSE + IUCN",
-                                                           "EDGE2 only", "FUSE only", "IUCN only"))
+combined_priorities$congruence_category <- factor(
+  combined_priorities$congruence_category,
+  levels = c("All three indices",
+             "IUCN + FUSE", "IUCN + EDGE2", "FUSE + EDGE2",  # Changed order
+             "IUCN only", "FUSE only", "EDGE2 only")
+)
 
 # Filter data to only include high priority areas
-high_priority_data <- combined_priorities[combined_priorities$congruence_category %in% 
-                                         c("All three indices", "EDGE2 + FUSE", "EDGE2 + IUCN", 
-                                           "FUSE + IUCN", "EDGE2 only", "FUSE only", "IUCN only"), ]
+high_priority_data <- combined_priorities[combined_priorities$congruence_category %in%
+                                          c("All three indices", 
+                                            "IUCN + FUSE", "IUCN + EDGE2", "FUSE + EDGE2",  # Changed names
+                                            "IUCN only", "FUSE only", "EDGE2 only"), ]
 
 # Debug: Check the data
 cat("Data check:\n")
@@ -3057,7 +3057,9 @@ my_theme_congruence <- theme_minimal() +
     legend.title = element_text(margin = margin(b = 10)),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
   )
 
 # Step 9: Create plot with debugging
@@ -3065,16 +3067,23 @@ print("=== STEP 9: CREATING PLOT ===")
 congruence_map <- ggplot() +
   geom_sf(data = congruence_sf, aes(color = category), size = 1.2, alpha = 0.85) +
   geom_sf(data = world_projected_congruence, fill = "lightgrey", color = "lightgrey", size = 0.1) +
-  geom_sf(data = globe_border_congruence, fill = NA, color = "black", size = 0.5) +
+  geom_sf(data = globe_border_congruence, fill = NA, color = "lightgrey", size = 0.5) +
   scale_color_manual(
-    values = c("All three indices" = "#8B0000",      
-              "EDGE2 + FUSE" = "#FF8C00",            
-              "EDGE2 + IUCN" = "#DC143C",            
-              "FUSE + IUCN" = "#FFD700",             
-              "EDGE2 only" = "#4169E1",              
-              "FUSE only" = "#32CD32",               
-              "IUCN only" = "#9370DB"),              
-    name = "High Priority Congruence",
+  values = c("All three indices" = "#8B0000",
+            "IUCN + FUSE" = "#FFD700",           # Changed from "FUSE + IUCN"
+            "IUCN + EDGE2" = "#DC143C",          # Changed from "EDGE2 + IUCN"
+            "FUSE + EDGE2" = "#FF8C00",          # Changed from "EDGE2 + FUSE"
+            "IUCN only" = "#9370DB",
+            "FUSE only" = "#32CD32",
+            "EDGE2 only" = "#4169E1"),
+  breaks = c("All three indices",
+             "IUCN + FUSE", 
+             "IUCN + EDGE2", 
+             "FUSE + EDGE2",
+             "IUCN only", 
+             "FUSE only", 
+             "EDGE2 only"),              # Finally: FUSE + EDGE2
+    name = "High priority congruence",
     guide = guide_legend(
       override.aes = list(size = 4, alpha = 1),
       title.position = "top", 
@@ -3082,8 +3091,8 @@ congruence_map <- ggplot() +
       ncol = 4
     )) +
   labs(
-    title = "Global Conservation Priority Congruence Analysis",
-    subtitle = "High priority areas (>0.9) showing agreement patterns across EDGE2, FUSE, and IUCN prioritisations",
+    title = "Global conservation priority congruence analysis",
+    subtitle = "High priority areas (>0.9) showing agreement patterns across IUCN, FUSE and EDGE2 prioritisations",
     x = NULL, 
     y = NULL
   ) +
