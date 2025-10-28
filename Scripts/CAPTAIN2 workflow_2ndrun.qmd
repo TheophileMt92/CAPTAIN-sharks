@@ -3785,15 +3785,14 @@ world_projected <- st_transform(world, crs = mcbryde_thomas_2)
 # Create globe border
 lon_points <- rep(c(-180, 180), each = 100)
 lat_points <- c(seq(-90, 90, length.out = 100), seq(90, -90, length.out = 100))
-
 globe_outline <- data.frame(lon = lon_points, lat = lat_points) %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
   st_combine() %>%
   st_cast("POLYGON") %>%
   st_transform(crs = mcbryde_thomas_2)
 
-# Function to create individual bivariate maps with labels
-create_bivariate_map <- function(data_sf, label) {
+# Function to create individual bivariate maps with labels and titles
+create_bivariate_map <- function(data_sf, label, title) {
   ggplot() +
     geom_sf(data = data_sf, aes(color = bivariate_color), size = 0.1, alpha = 1) +
     geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
@@ -3801,47 +3800,53 @@ create_bivariate_map <- function(data_sf, label) {
     scale_color_identity() +
     coord_sf() +
     theme_minimal() +
-    labs(x = NULL, y = NULL) +
+    labs(x = NULL, y = NULL, title = title) +  # Added title
     theme(panel.grid = element_blank(),
-          plot.margin = margin(0, 5, 0, 5, "mm")) +
-    # Add label in top-left corner
-    annotate("text", x = -Inf, y = Inf, label = label, 
-             hjust = -0.2, vjust = 1.2, size = 6, fontface = "bold")
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(size = 14, face = "bold", hjust = 0.5),  # Title styling
+          plot.margin = margin(5, 5, 5, 5, "mm")) +
+    # Add smaller label in top-left corner
+    annotate("text", x = -Inf, y = Inf, label = label,
+             hjust = -0.2, vjust = 1.2, size = 4, fontface = "bold")  # Reduced from 8 to 4
 }
 
-# Create the three maps with labels
-iucn_plot <- create_bivariate_map(iucn_fishing_sf, "(A)")
-fuse_plot <- create_bivariate_map(fuse_fishing_sf, "(B)")  
-edge2_plot <- create_bivariate_map(edge2_fishing_sf, "(C)")
+# Create the three maps with labels and titles
+iucn_plot <- create_bivariate_map(iucn_fishing_sf, "(A)", "IUCN")
+fuse_plot <- create_bivariate_map(fuse_fishing_sf, "(B)", "FUSE")  
+edge2_plot <- create_bivariate_map(edge2_fishing_sf, "(C)", "EDGE2")
 
-# Create a smaller legend for better proportions
-small_legend <- bi_legend(pal = map_pal, dim = 4,
-                         xlab = 'Conservation Priority',
-                         ylab = 'Fishing Effort',
-                         size = 1.5) +  # Slightly smaller than before
+# Create a larger legend for better visibility
+larger_legend <- bi_legend(pal = map_pal, dim = 4,
+                          xlab = 'Conservation\nPriority',
+                          ylab = 'Fishing\nEffort',
+                          size = 4) +  # Increased from 3 to 4 for bigger legend
   theme(
-    axis.title = element_text(size = 10, face = "bold"),
+    axis.title = element_text(size = 10, face = "bold"),  # Reduced from 12 to 10
     axis.text = element_blank(),
-    legend.text = element_text(size = 8),
-    legend.title = element_text(size = 10, face = "bold"),
-    plot.margin = margin(0, 5, 5, 5, "mm")  # Reduced top margin to 0
+    legend.text = element_text(size = 8),  # Reduced from 10 to 8
+    legend.title = element_text(size = 10, face = "bold"),  # Reduced from 12 to 10
+    plot.margin = margin(10, 10, 10, 10, "mm")
   )
 
-# Create layout matrix: 2 rows, 3 columns
-# First row: maps 1, 2, 3
-# Second row: empty, legend (4), empty
-layout_matrix <- rbind(c(1, 2, 3),
-                      c(NA, 4, NA))  # NA creates empty spaces
+# Create layout matrix: 3 rows, 2 columns
+# Column 1: maps (wider)
+# Column 2: empty, legend (middle row), empty
+layout_matrix <- rbind(
+  c(1, NA),      # Row 1: Map A, empty
+  c(2, 4),       # Row 2: Map B, legend
+  c(3, NA)       # Row 3: Map C, empty
+)
 
 # Arrange all plots together
 combined_plot <- grid.arrange(
   iucn_plot,
   fuse_plot,
   edge2_plot,
-  small_legend,
+  larger_legend,
   layout_matrix = layout_matrix,
-  heights = c(1, 0.3),  # Maps take most space, legend row is smaller
-  widths = c(1, 1, 1)   # Equal width for all three columns
+  heights = c(1, 1, 1),      # Equal height for all three map rows
+  widths = c(3, 1)           # Maps take 3/4 width, legend takes 1/4
 )
 
 # Display the plot
@@ -3853,9 +3858,9 @@ cat("IUCN cells (A):", nrow(iucn_fishing_sf), "\n")
 cat("FUSE cells (B):", nrow(fuse_fishing_sf), "\n")
 cat("EDGE2 cells (C):", nrow(edge2_fishing_sf), "\n")
 
-# Optional: Save individual plots
-ggsave(here::here("outputs", "All_indices_fishing_bivariate_maps.png"), 
-       combined_plot, width = 16, height = 8, dpi = 300, bg = "white")
+# Save with dimensions better suited for A4 portrait
+ggsave(here::here("outputs", "All_indices_fishing_bivariate_maps_vertical.png"),
+       combined_plot, width = 8.3, height = 11, dpi = 300, bg = "white")  # A4 portrait dimensions
 ```
 
 ## Maps of SR, FUn and EDGE2  
