@@ -384,7 +384,7 @@ eco_map <- ggplot() +
   geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
           fill = "lightgrey", color = "darkgrey", size = 0.1) +
   scale_fill_viridis_c(
-    name = "Mean % range in\nNo-Take MPAs",
+    name = "Mean % range in no-take MPAs",
     na.value = "grey90",
     trans = "sqrt",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5,
@@ -392,12 +392,14 @@ eco_map <- ggplot() +
   ) +
   theme_minimal() +
   labs(
-    title = "Mean No-Take MPA Coverage by Marine Ecoregion",
+    #title = "Mean No-Take MPA Coverage by Marine Ecoregion",
     x = NULL, y = NULL
   ) +
   theme(
     legend.position = "bottom",
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
   )
 
 # Save ecoregion map
@@ -442,9 +444,9 @@ top_eco_plot <- ggplot(head(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mea
                width = 0.2) +
   coord_flip() +
   labs(
-    title = "Top 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+   # title = "Top 20 Marine Ecoregions by Mean No-Take MPA Coverage",
     x = NULL,
-    y = "Mean % Range in No-Take MPAs"
+    y = "Mean % range in no-take MPAs"
   ) +
   theme_minimal() +
   theme(
@@ -462,9 +464,9 @@ bottom_eco_plot <- ggplot(tail(ecoregion_stats, 20), aes(x = reorder(ECOREGION, 
                width = 0.2) +
   coord_flip() +
   labs(
-    title = "Bottom 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+ #   title = "Bottom 20 Marine Ecoregions by Mean No-Take MPA Coverage",
     x = NULL,
-    y = "Mean % Range in No-Take MPAs"
+    y = "Mean % range in no-take MPAs"
   ) +
   theme_minimal() +
   theme(
@@ -767,7 +769,7 @@ significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
   
   kable_output <- kable(combined_table, format = "html", 
         col.names = c("Species", "Actual %", "Random %", "Difference", "SES"),  # Changed from "Z-score" to "SES"
-        caption = paste("Top 10 Significantly Over/Under-represented Species in", mpa_type, "MPAs")) %>%
+        caption = paste("Top 10 significantly over/under-represented species in", mpa_type, "MPAs")) %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
                   full_width = FALSE) %>%
     column_spec(1, width = "200px") %>%
@@ -794,7 +796,7 @@ significant_species <- function(comparison_data, mpa_type, z_threshold = 1.96) {
 
 # Identify significant species and save as PNG
 significant_species(comparison_ALL, "ALL")
-significant_species(comparison_NT, "No-Take")
+significant_species(comparison_NT, "no-take")
 
 #Stacked bar chart
 # Create a summary dataframe for plotting
@@ -1534,12 +1536,14 @@ ses_eco_map <- ggplot() +
   coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
   theme_minimal() +
   labs(
-    title = "Mean Standardized Effect Size (SES) by Marine Ecoregion",
+  #  title = "Mean Standardized Effect Size (SES) by Marine Ecoregion",
     x = NULL, y = NULL
   ) +
   theme(
     legend.position = "bottom",
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
   )
 
 # Print and save the map
@@ -1555,7 +1559,7 @@ top_ses_plot <- ggplot(head(ecoregion_ses_stats, 20),
                width = 0.2) +
   coord_flip() +
   labs(
-    title = "Top 20 Marine Ecoregions by Mean SES",
+    #title = "Top 20 Marine Ecoregions by Mean SES",
     x = NULL,
     y = "Mean SES"
   ) +
@@ -1573,7 +1577,7 @@ bottom_ses_plot <- ggplot(tail(ecoregion_ses_stats, 20),
                width = 0.2) +
   coord_flip() +
   labs(
-    title = "Bottom 20 Marine Ecoregions by Mean SES",
+    #title = "Bottom 20 Marine Ecoregions by Mean SES",
     x = NULL,
     y = "Mean SES"
   ) +
