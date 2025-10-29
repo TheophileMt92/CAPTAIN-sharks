@@ -2782,10 +2782,10 @@ congruent_map <- ggplot() +
           color = "red", size = 0.8, alpha = 0.8) +
   geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
   geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "black", size = 0.5) +
-  scale_fill_manual(values = c("Congruent High Priority" = "red"),
-                    name = "Priority Areas") +
-  labs(title = "Congruent High Priority Areas",
-       subtitle = "Areas with Priority > 0.9 in IUCN, FUSE and EDGE2 dimensions",
+  scale_fill_manual(values = c("Congruent high priority" = "red"),
+                    name = "Priority areas") +
+  labs(title = "Congruent high priority areas",
+       subtitle = "Areas with priority > 0.9 in IUCN, FUSE and EDGE2 dimensions",
        x = NULL, y = NULL) +
   my_theme_CAPTAIN2_EDGE2
 
@@ -3433,13 +3433,13 @@ iucn_ecoregion_plot <- ggplot(ecoregion_combined_iucn,
     box.padding = 0.5
   ) +
   scale_x_log10() +
-  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_size_continuous(name = "Number of cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
-       subtitle = "By Ecoregion (IUCN)",
-       x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority (IUCN)") +
+  labs(title = "Relationship between fishing pressure and conservation priority",
+       subtitle = "By ecoregion (IUCN)",
+       x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority (IUCN)") +
   theme_minimal() +
   guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
 
@@ -3473,10 +3473,10 @@ fuse_ecoregion_plot <- ggplot(ecoregion_combined_fuse,
   scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
-       subtitle = "By Ecoregion (FUSE)",
-       x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority (FUSE)") +
+  labs(title = "Relationship between fishing pressure and conservation priority",
+       subtitle = "By ecoregion (FUSE)",
+       x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority (FUSE)") +
   theme_minimal() +
   guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
 
@@ -3510,10 +3510,10 @@ edge2_ecoregion_plot <- ggplot(ecoregion_combined_edge2,
   scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(title = "Relationship Between Fishing Pressure and Conservation Priority",
-       subtitle = "By Ecoregion (EDGE2)",
-       x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority (EDGE2)") +
+  labs(title = "Relationship between fishing pressure and conservation priority",
+       subtitle = "By ecoregion (EDGE2)",
+       x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority (EDGE2)") +
   theme_minimal() +
   guides(color = guide_legend(title = "Realm", override.aes = list(size = 4)))
 
@@ -3531,11 +3531,11 @@ iucn_ecoregion_plot <- ggplot(ecoregion_combined_iucn,
     box.padding = 0.5
   ) +
   scale_x_log10() +
-  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_size_continuous(name = "Number of cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority") +
+  labs(x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority") +
   theme_minimal() +
   theme(
     legend.position = "none",  # Remove legend from individual plots
@@ -3545,7 +3545,7 @@ iucn_ecoregion_plot <- ggplot(ecoregion_combined_iucn,
   ) +
   guides(
     color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
-    size = guide_legend(title = "Number of Cells")
+    size = guide_legend(title = "Number of cells")
   )
 
 # FUSE Plot
@@ -3560,11 +3560,11 @@ fuse_ecoregion_plot <- ggplot(ecoregion_combined_fuse,
     box.padding = 0.5
   ) +
   scale_x_log10() +
-  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_size_continuous(name = "Number of cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority") +
+  labs(x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority") +
   theme_minimal() +
   theme(
     legend.position = "none",  # Remove legend from individual plots
@@ -3574,7 +3574,7 @@ fuse_ecoregion_plot <- ggplot(ecoregion_combined_fuse,
   ) +
   guides(
     color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
-    size = guide_legend(title = "Number of Cells")
+    size = guide_legend(title = "Number of cells")
   )
 
 # EDGE2 Plot
@@ -3589,11 +3589,11 @@ edge2_ecoregion_plot <- ggplot(ecoregion_combined_edge2,
     box.padding = 0.5
   ) +
   scale_x_log10() +
-  scale_size_continuous(name = "Number of Cells", range = c(1, 8)) +
+  scale_size_continuous(name = "Number of cells", range = c(1, 8)) +
   scale_color_manual(values = c("red", "blue", "darkgreen", "purple", "orange", "brown", 
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
-  labs(x = "Mean Fishing Hours (log scale)",
-       y = "Mean Conservation Priority") +
+  labs(x = "Mean fishing hours (log scale)",
+       y = "Mean conservation priority") +
   theme_minimal() +
   theme(
     legend.position = "none",  # Remove legend from individual plots
@@ -3603,7 +3603,7 @@ edge2_ecoregion_plot <- ggplot(ecoregion_combined_edge2,
   ) +
   guides(
     color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
-    size = guide_legend(title = "Number of Cells")
+    size = guide_legend(title = "Number of cells")
   )
 
 # Create one plot with legend for extracting the common legend
@@ -3615,7 +3615,7 @@ legend_plot <- ggplot(ecoregion_combined_iucn,
                                "black", "pink", "darkgray", "navy", "darkred", "forestgreen")) +
   guides(
     color = guide_legend(title = "Realm", override.aes = list(size = 4, alpha = 1)),
-    size = guide_legend(title = "Number of Cells")
+    size = guide_legend(title = "Number of cells")
   ) +
   theme_minimal() +
   theme(
@@ -3818,8 +3818,8 @@ edge2_plot <- create_bivariate_map(edge2_fishing_sf, "(C)", "EDGE2")
 
 # Create a larger legend for better visibility
 larger_legend <- bi_legend(pal = map_pal, dim = 4,
-                          xlab = 'Conservation\nPriority',
-                          ylab = 'Fishing\nEffort',
+                          xlab = 'Conservation\npriority',
+                          ylab = 'Fishing\neffort',
                           size = 4) +  # Increased from 3 to 4 for bigger legend
   theme(
     axis.title = element_text(size = 10, face = "bold"),  # Reduced from 12 to 10
