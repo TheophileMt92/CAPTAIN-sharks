@@ -2635,6 +2635,61 @@ grid_high_priority
 # Save
 ggsave(here::here("grid_high_priority_maps.png"), grid_high_priority, 
        width = 8, height = 15, dpi = 300)
+
+#Mean nearest neighbor for high priority grid cells:
+library(spatstat)
+library(sf)
+
+# Function to calculate Mean Nearest Neighbor Distance
+calculate_mnn <- function(sf_high_priority) {
+  # Get centroids and convert to coordinates
+  coords <- st_coordinates(st_centroid(sf_high_priority))
+  
+  # Create a bounding box for the window
+  bbox <- st_bbox(sf_high_priority)
+  
+  # Create observation window
+  window <- owin(xrange = c(bbox["xmin"], bbox["xmax"]),
+                 yrange = c(bbox["ymin"], bbox["ymax"]))
+  
+  # Create point pattern object
+  ppp_obj <- ppp(coords[,1], coords[,2], window = window)
+  
+  # Calculate mean nearest neighbor distance
+  mnn <- mean(nndist(ppp_obj))
+  
+  # Calculate standard deviation for context
+  mnn_sd <- sd(nndist(ppp_obj))
+  
+  return(list(mean = mnn, sd = mnn_sd))
+}
+
+# Calculate for each index
+iucn_mnn <- calculate_mnn(CAPTAIN2_IUCN_high)
+fuse_mnn <- calculate_mnn(CAPTAIN2_FUSE_high)
+edge2_mnn <- calculate_mnn(CAPTAIN2_EDGE2_high)
+
+# Print results
+cat("\nMean Nearest Neighbor Distance (units depend on your projection):\n")
+cat("IUCN:  Mean = ", round(iucn_mnn$mean, 2), ", SD = ", round(iucn_mnn$sd, 2), "\n", sep="")
+cat("FUSE:  Mean = ", round(fuse_mnn$mean, 2), ", SD = ", round(fuse_mnn$sd, 2), "\n", sep="")
+cat("EDGE2: Mean = ", round(edge2_mnn$mean, 2), ", SD = ", round(edge2_mnn$sd, 2), "\n", sep="")
+
+# Create summary data frame
+mnn_summary <- data.frame(
+  Index = c("IUCN", "FUSE", "EDGE2"),
+  N_cells = c(iucn_high_cells, fuse_high_cells, edge2_high_cells),
+  Percent = c(iucn_percent, fuse_percent, edge2_percent),
+  MNN_mean = c(iucn_mnn$mean, fuse_mnn$mean, edge2_mnn$mean),
+  MNN_sd = c(iucn_mnn$sd, fuse_mnn$sd, edge2_mnn$sd)
+)
+
+print(mnn_summary)
+
+# Interpretation:
+# Lower MNN = more clustered/concentrated high-priority areas
+# Higher MNN = more dispersed/spread out high-priority areas
+
 ```
 
 ### Ecoregions with high priority
