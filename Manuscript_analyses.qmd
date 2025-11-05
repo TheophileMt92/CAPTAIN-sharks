@@ -1,0 +1,1409 @@
+---
+title: "Manuscript_analyses"
+author: "Théophile L. Mouton"
+date: "November 5, 2025"
+format:
+  html:
+    toc: true
+    toc-location: right
+    css: custom.css
+    output-file: "Manuscript_analyses.html"
+    self-contained: true
+    code-fold: true
+    code-tools: true
+editor: visual
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+# Load the libraries
+
+```{r}
+# Load necessary libraries
+library(raster)
+library(here)
+library(sp)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(smoothr)
+library(terra)  # For raster operations
+library(raster)
+library(parallel)
+library(pbapply)
+library(knitr)
+library(kableExtra)
+library(patchwork)
+library(gridExtra)
+library(tidyverse)
+library(ggridges)
+library(betareg)
+library(margins)
+```
+
+# Load the data
+
+## Load the species presence grid and the no-take MPA raster layer
+
+```{r}
+# Species presence grid 
+load(here::here("Data", "GAP analyses", "puvsp_marine.Rdata"))
+
+# No-take MPA raster layer
+mpa_NT <- raster::raster(here::here("Data", "GAP analyses", "mpa_NT_binary.tif"))
+
+# High seas shapefile 
+High_seas = st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"))
+
+# Ecoregion shapefile
+meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
+
+# EEZ shapefile 
+eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TRUE)
+
+# Bathymetry raster layer
+Bathy <- raster(here::here("Data", "bathymetry-0.1deg-adjusted.tif"))
+
+# Load IUCN data
+IUCN <- readRDS(here::here("Data", "GAP analyses", "sharks_iucn_final.RDS"))
+IUCN$species <- gsub("_", " ", IUCN$Species)
+```
+
+# GAP analyses
+
+## GAP analyses of shark and ray range overlaps with Marine Protected Areas
+
+```{r}
+# Convert species dataframe to spatial points
+species_points <- SpatialPointsDataFrame(coords = puvsp_marine[, c("lon", "lat")], 
+                                         data = puvsp_marine, 
+                                         proj4string = CRS(projection(mpa_NT)))
+
+# Extract MPA values for each species point
+mpa_NT_values <- raster::extract(mpa_NT, species_points)
+
+# Add MPA values to the species dataframe
+puvsp_marine$mpa_NT_present <- mpa_NT_values
+
+# Function to calculate percentage of range in MPA
+calculate_mpa_percentage <- function(species_column, mpa_column) {
+  species_presence <- species_column == 1  # Assuming 1 indicates species presence
+  total_range <- sum(species_presence, na.rm = TRUE)
+  range_in_mpa <- sum(species_presence & mpa_column == 1, na.rm = TRUE)
+  
+  if (total_range == 0) {
+    return(NA)  # Return NA if the species is not present anywhere
+  }
+  
+  percentage <- (range_in_mpa / total_range) * 100
+  return(percentage)
+}
+
+# Apply function to all species columns for both MPA types
+species_columns <- 4:(ncol(puvsp_marine) - 2)  # Assuming species columns start at 4
+
+mpa_NT_percentages <- sapply(puvsp_marine[, species_columns], 
+                             function(x) calculate_mpa_percentage(x, puvsp_marine$mpa_NT_present))
+
+# Create a dataframe with results
+results <- data.frame(
+  species = names(mpa_NT_percentages),
+  percentage_in_NT_MPA = mpa_NT_percentages
+)
+
+# Remove any NA results
+results <- results[!is.na(results$percentage_in_NT_MPA), ]
+
+# Sort results by percentage in no-take MPAs (descending)
+results <- results[order(-results$percentage_in_NT_MPA), ]
+
+# Display top 10 species
+#print(head(results, 10))
+
+# Summary statistics
+cat("\nSummary Statistics for No-Take MPAs:\n")
+print(summary(results$percentage_in_NT_MPA))
+print(sd(results$percentage_in_NT_MPA))
+
+# Save results to CSV
+write.csv(results, here::here("Data","species_mpa_coverage_NT.csv"), row.names = FALSE)
+```
+
+# Map of mean % range covered
+
+```{r}
+# Convert results to a named vector for easier lookup
+species_NT_percentages <- setNames(results$percentage_in_NT_MPA, results$species)
+
+# Create a new dataframe to store results
+grid_data <- puvsp_marine %>%
+  dplyr::select(lon, lat) %>%
+  mutate(
+    species_count = 0,
+    sum_percentages = 0
+  )
+
+# For each species, add its coverage percentage to cells where it's present
+for (sp_name in names(species_NT_percentages)) {
+  # Find the column index in the original data
+  col_idx <- which(names(puvsp_marine) == sp_name)
+  
+  if (length(col_idx) > 0) {
+    # Find cells where this species is present
+    present_cells <- which(puvsp_marine[[col_idx]] == 1)
+    
+    if (length(present_cells) > 0) {
+      # Add to species count
+      grid_data$species_count[present_cells] <- grid_data$species_count[present_cells] + 1
+      
+      # Add the species' NT percentage to the sum
+      grid_data$sum_percentages[present_cells] <- 
+        grid_data$sum_percentages[present_cells] + species_NT_percentages[sp_name]
+    }
+  }
+}
+
+# Calculate mean percentage for each grid cell
+grid_data <- grid_data %>%
+  mutate(mean_NT_coverage = ifelse(species_count > 0, sum_percentages / species_count, NA)) %>%
+  filter(!is.na(mean_NT_coverage))
+
+# Report global statistics
+cat("Global mean percentage of species ranges in No-Take MPAs:", 
+    mean(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Global median percentage of species ranges in No-Take MPAs:", 
+    median(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Standard deviation:", 
+    sd(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
+
+# Exclude high seas grid cells ---- 
+
+# Create high seas template raster
+template_raster <- rast(ext(High_seas), resolution = 0.5)
+
+# Rasterize high seas polygon
+highseas_raster <- rasterize(vect(High_seas), template_raster, field = 1, background = 0)
+
+# Convert grid_data to terra SpatVector for extraction
+grid_points <- vect(as.data.frame(grid_data), 
+                   geom = c("lon", "lat"), 
+                   crs = crs(highseas_raster))
+
+# Extract values from highseas raster
+highseas_values <- terra::extract(highseas_raster, grid_points)
+
+# Add highseas classification back to the dataframe
+grid_data$is_highseas <- highseas_values[, 2]
+grid_data$is_highseas[is.na(grid_data$is_highseas)] <- 0  # Set NA to 0 (continental)
+
+# Filter to keep only continental waters (is_highseas = 0)
+grid_data_continental <- grid_data %>%
+  filter(is_highseas == 0)
+
+# Define the projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Convert grid data to sf object and project (continental waters only)
+grid_data_sf <- grid_data_continental %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Get and project land
+land_projected <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
+  )
+
+# Calculate the data range for better color scaling
+max_value <- max(grid_data_continental$mean_NT_coverage, na.rm = TRUE)
+color_breaks <- seq(0, ceiling(max_value / 10) * 10, by = 2)
+
+# Map with built-in transformation
+nt_map_projected <- ggplot() +
+  geom_sf(data = grid_data_sf, aes(color = mean_NT_coverage), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_viridis_c(
+    option = "viridis",
+    name = "Mean % range in no-take MPAs",
+    trans = "sqrt",  # Use "log10" for log scale
+    breaks = color_breaks,
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(
+   # title = "Mean Percentage of Species Range in No-Take MPAs",
+  #  subtitle = "Continental Waters Only (Square Root Scale)",
+    x = NULL, y = NULL
+  ) +
+#  annotate("text", x = -Inf, y = Inf, label = "(A)", 
+#           hjust = -1, vjust = 2, size = 6, fontface = "bold") +
+  my_theme
+
+# Print the projected map
+print(nt_map_projected)
+
+# Save the projected map (continental waters only)
+ggsave(here::here("NT_MPA_coverage_continental.png"), nt_map_projected, width = 10, height = 7, dpi = 300)
+
+# Report continental waters statistics
+cat("\nContinental Waters Statistics:\n")
+cat("Mean percentage of species ranges in No-Take MPAs:", 
+    mean(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Max percentage of species ranges in No-Take MPAs:", 
+    max(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Min percentage of species ranges in No-Take MPAs:", 
+    min(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Median percentage of species ranges in No-Take MPAs:", 
+    median(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+cat("Standard deviation:", 
+    sd(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+```
+
+# Breakdown by realm, ecoregion and EEZ
+
+```{r}
+# Convert grid_data_continental to sf for spatial operations
+grid_sf <- grid_data_continental %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+#=====================
+# Calculate by Realm
+#=====================
+# Extract realms from meow_ecos
+realms <- meow_ecos %>%
+  group_by(REALM) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  ungroup()
+
+# Spatial join with realms
+grid_realms <- st_join(grid_sf, realms)
+
+# Calculate mean coverage by realm
+realm_stats <- grid_realms %>%
+  st_drop_geometry() %>%
+  group_by(REALM) %>%
+  summarize(
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+#======================
+# Calculate by Ecoregion
+#======================
+# Spatial join with ecoregions
+grid_ecoregions <- st_join(grid_sf, meow_ecos)
+
+# Calculate mean coverage by ecoregion
+ecoregion_stats <- grid_ecoregions %>%
+  st_drop_geometry() %>%
+  group_by(ECOREGION) %>%
+  summarize(
+    PROVINCE = first(PROVINCE),
+    REALM = first(REALM),
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+#======================
+# Calculate by EEZ
+#======================
+# Fix potential invalid geometries in EEZ data
+eez_valid <- st_make_valid(eez)
+
+# Spatial join with EEZ
+grid_eez <- st_join(grid_sf, eez_valid %>% dplyr::select(TERRITORY1, SOVEREIGN1, ISO_TER1, MRGID_TER1))
+
+# Calculate mean coverage by EEZ
+eez_stats <- grid_eez %>%
+  st_drop_geometry() %>%
+  group_by(TERRITORY1, SOVEREIGN1) %>%
+  summarize(
+    ISO_TER1 = first(ISO_TER1),
+    MRGID_TER1 = first(MRGID_TER1),
+    mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
+    median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n()
+  ) %>%
+  arrange(desc(mean_NT_coverage))
+
+# Print summary tables
+cat("Top 10 Realms by Mean No-Take MPA Coverage:\n")
+print(head(realm_stats, 10))
+
+cat("\nTop 10 Ecoregions by Mean No-Take MPA Coverage:\n")
+print(head(ecoregion_stats, 10))
+
+cat("\nTop 10 EEZs by Mean No-Take MPA Coverage:\n")
+print(head(eez_stats, 10))
+
+#======================
+# Create visualizations
+#======================
+
+# 1. Choropleth map of ecoregions
+# Join stats back to spatial data
+meow_ecos_stats <- meow_ecos %>%
+  left_join(ecoregion_stats, by = "ECOREGION")
+
+# Plot ecoregions map
+eco_map <- ggplot() +
+  geom_sf(data = meow_ecos_stats, aes(fill = mean_NT_coverage), color = NA) +
+  geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
+          fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Mean % range in no-take MPAs",
+    na.value = "grey90",
+    trans = "sqrt",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  theme_minimal() +
+  labs(
+    #title = "Mean No-Take MPA Coverage by Marine Ecoregion",
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+# Save ecoregion map
+ggsave(here("Outputs", "ecoregion_NT_coverage_map.png"), eco_map, width = 12, height = 8, dpi = 300)
+
+# 2. Choropleth map of EEZs
+# Join stats back to spatial data
+eez_stats_map <- eez_valid %>%
+  left_join(eez_stats, by = c("TERRITORY1", "SOVEREIGN1"))
+
+# Plot EEZ map
+eez_map <- ggplot() +
+  geom_sf(data = eez_stats_map, aes(fill = mean_NT_coverage), color = NA) +
+  geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
+          fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_viridis_c(
+    name = "Mean % range in\nNo-Take MPAs",
+    na.value = "grey90",
+    trans = "sqrt",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                           title.position = "top", title.hjust = 0.5)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Mean No-Take MPA Coverage by Exclusive Economic Zone (EEZ)",
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank()
+  )
+
+# Save EEZ map
+ggsave(here("Results", "eez_NT_coverage_map.png"), eez_map, width = 12, height = 8, dpi = 300)
+
+# 3. Bar plots for top regions
+# Top 20 Ecoregions
+top_eco_plot <- ggplot(head(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+   # title = "Top 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % range in no-take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save top ecoregions plot
+ggsave(here("Outputs", "top_ecoregions_NT_coverage.png"), top_eco_plot, width = 10, height = 8, dpi = 300)
+
+# Bottom 20 Ecoregions
+bottom_eco_plot <- ggplot(tail(ecoregion_stats, 20), aes(x = reorder(ECOREGION, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+ #   title = "Bottom 20 Marine Ecoregions by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % range in no-take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save bottom ecoregions plot
+ggsave(here("Outputs", "bottom_ecoregions_NT_coverage.png"), bottom_eco_plot, width = 10, height = 8, dpi = 300)
+
+# Top 20 EEZs
+top_eez_plot <- ggplot(head(eez_stats, 20), aes(x = reorder(TERRITORY1, mean_NT_coverage), y = mean_NT_coverage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_NT_coverage - sd_NT_coverage, 
+                   ymax = mean_NT_coverage + sd_NT_coverage), 
+               width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Top 20 EEZs by Mean No-Take MPA Coverage",
+    x = NULL,
+    y = "Mean % Range in No-Take MPAs"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Save top EEZs plot
+ggsave(here("Results", "top_eezs_NT_coverage.png"), top_eez_plot, width = 10, height = 8, dpi = 300)
+```
+
+# Null model of MPA placement within EEZs
+
+Null model of MPA placement and overlaps with the range of sharks and rays
+
+```{r}
+# Create marine mask from bathymetry (areas < 0)
+marine_mask <- Bathy < 0
+
+# Resample marine mask to match MPA raster resolution
+marine_mask_resampled <- raster::resample(marine_mask, mpa_NT, method = "ngb")
+
+# Ensure marine_mask_resampled is binary (0 or 1)
+marine_mask_resampled <- raster::reclassify(marine_mask_resampled, c(-Inf, 0.5, 0, 0.5, Inf, 1))
+
+# Function to create a raster mask of EEZs with unique values for each country
+create_eez_mask <- function(template_raster) {
+  # Ensure EEZ has a unique identifier for each country
+  eez$country_id <- as.numeric(as.factor(eez$SOVEREIGN1))
+  
+  # Rasterize the EEZ shapefile using the country_id
+  eez_raster <- rasterize(eez, template_raster, field = "country_id")
+  
+  return(eez_raster)
+}
+
+# Updated create_random_mpa function to randomize within each country's EEZ
+create_random_mpa <- function(template_raster, marine_mask, eez_mask) {
+  # Ensure template_raster is binary
+  template_raster <- raster::reclassify(template_raster, c(-Inf, 0.5, 0, 0.5, Inf, 1))
+  
+  # Combine marine_mask and eez_mask
+  combined_mask <- marine_mask * (eez_mask > 0)
+  
+  # Get unique country IDs
+  country_ids <- unique(eez_mask[!is.na(eez_mask)])
+  country_ids <- country_ids[country_ids > 0]
+  
+  # Initialize random raster
+  random_raster <- template_raster
+  random_raster[] <- NA
+  
+  for (country_id in country_ids) {
+    # Create mask for current country
+    country_mask <- eez_mask == country_id
+    
+    # Count original marine MPA cells within current country's EEZ
+    original_mpa_cells <- sum(template_raster[] == 1 & country_mask[] & !is.na(combined_mask[]), na.rm = TRUE)
+    
+    # Get all valid cells for current country (marine areas within EEZ)
+    valid_cells <- which(country_mask[] & !is.na(combined_mask[]))
+    total_valid_cells <- length(valid_cells)
+    
+    if (original_mpa_cells > 0 && total_valid_cells > 0) {
+      if (original_mpa_cells > total_valid_cells) {
+        warning(paste("More MPA cells than valid marine cells for country ID", country_id, ". Adjusting MPA cell count."))
+        original_mpa_cells <- total_valid_cells
+      }
+      
+      # Randomly select valid cells to be MPAs for current country
+      mpa_cells <- sample(valid_cells, size = min(original_mpa_cells, total_valid_cells), replace = FALSE)
+      
+      # Update random raster
+      random_raster[valid_cells] <- 0
+      random_raster[mpa_cells] <- 1
+    }
+  }
+  
+  return(random_raster)
+}
+
+# Calculate MPA percentage function
+calculate_mpa_percentage <- function(species_values, mpa_values) {
+  total_cells <- sum(!is.na(species_values))
+  mpa_cells <- sum(mpa_values == 1 & !is.na(species_values), na.rm = TRUE)
+  percentage <- (mpa_cells / total_cells) * 100
+  return(percentage)
+}
+
+# Main analysis function
+run_random_mpa_analysis <- function(species_data, mpa_raster, marine_mask, eez_mask, n_iterations = 100) {
+  # Convert species dataframe to spatial points
+  species_points <- sp::SpatialPointsDataFrame(coords = species_data[, c("lon", "lat")], 
+                                               data = species_data, 
+                                               proj4string = sp::CRS(raster::projection(mpa_raster)))
+  
+  # Prepare results storage
+  species_columns <- 4:(ncol(species_data) - 1)  # Adjust if needed
+  all_results <- matrix(nrow = length(species_columns), ncol = n_iterations)
+  rownames(all_results) <- names(species_data)[species_columns]
+  
+  # Use pblapply for parallel processing with a progress bar
+  all_results <- pblapply(1:n_iterations, function(i) {
+    set.seed(i)  # Set seed for reproducibility
+    random_mpa <- create_random_mpa(mpa_raster, marine_mask, eez_mask)
+    random_mpa_values <- raster::extract(random_mpa, species_points)
+    sapply(species_data[, species_columns], 
+           function(x) calculate_mpa_percentage(x, random_mpa_values))
+  }, cl = detectCores() - 1)  # Use one less than available cores
+  
+  all_results <- do.call(cbind, all_results)
+  
+  # Calculate mean and standard deviation for each species
+  mean_percentages <- rowMeans(all_results, na.rm = TRUE)
+  sd_percentages <- apply(all_results, 1, sd, na.rm = TRUE)
+  
+  results <- data.frame(
+    species = rownames(all_results),
+    mean_percentage = mean_percentages,
+    sd_percentage = sd_percentages
+  )
+  
+  return(results)
+}
+
+# Function to process results
+process_results <- function(results, mpa_type) {
+  # Sort results by mean_percentage in descending order
+  results <- results[order(-results$mean_percentage), ]
+  
+  # Calculate summary statistics
+  summary_stats <- summary(results$mean_percentage)
+  
+  # Write results to CSV
+  write.csv(results, here::here("Outputs",paste0("species_random_", mpa_type, "_coverage.csv")), row.names = FALSE)
+  
+  # Return a list containing the processed data
+  return(list(
+    top_10 = head(results, 10),
+    summary_stats = summary_stats,
+    all_results = results
+  ))
+}
+
+# Create the EEZ mask with unique country IDs
+eez_mask <- create_eez_mask(mpa_NT)
+
+# Run the analysis with the country-specific EEZ constraint
+tryCatch({
+  random_results_NT <- run_random_mpa_analysis(puvsp_marine, mpa_NT, marine_mask_resampled, eez_mask, n_iterations = 100)
+  print("Analysis for No-Take MPAs completed successfully.")
+}, error = function(e) {
+  print(paste("Error in No-Take MPAs analysis:", e$message))
+})
+
+# Process results for both MPA types
+processed_results <- list()
+
+if (exists("random_results_NT")) {
+  processed_results[["No-take MPAs"]] <- process_results(random_results_NT, "No-take MPAs")
+}
+```
+
+# Compare results
+
+Compare results between the MPA network and the Null model of MPA placement
+
+```{r}
+# Load actual MPA coverage data
+actual_coverage <- read.csv(here::here("Data", "species_mpa_coverage_NT.csv"))
+colnames(actual_coverage)[2] <- c("NT")
+
+# Load random MPA coverage results
+random_NT <- read.csv(here::here("Outputs", "species_random_No-take MPAs_coverage.csv"))
+
+# Reshape actual coverage data to long format (NT only)
+actual_long <- actual_coverage %>%
+  select(species, NT) %>%
+  rename(actual_percentage = NT)
+
+# Function to merge and compare actual vs random data
+compare_coverage <- function(actual_data, random_data) {
+  comparison <- actual_data %>%
+    left_join(random_data, by = "species") %>%
+    mutate(difference = actual_percentage - mean_percentage,
+           z_score = (actual_percentage - mean_percentage) / sd_percentage)
+  
+  return(comparison)
+}
+
+# Create comparison dataframe for NT MPAs
+comparison_NT <- compare_coverage(actual_long, random_NT)
+
+# Function to summarize and print results
+summarize_results <- function(comparison_data) {
+  over_represented <- mean(comparison_data$difference > 0, na.rm = TRUE) * 100
+  under_represented <- mean(comparison_data$difference < 0, na.rm = TRUE) * 100
+  equally_represented <- 100 - over_represented - under_represented
+  
+  summary_df <- data.frame(
+    Representation = c("Over-represented", "Under-represented", "Equally represented"),
+    Percentage = round(c(over_represented, under_represented, equally_represented), 2)
+  )
+  
+  kable(summary_df, format = "html", col.names = c("Representation", "Percentage (%)"),
+        caption = "Summary for No-Take MPAs") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(2, width = "100px") %>%
+    row_spec(0, bold = TRUE) %>%
+    add_header_above(c(" " = 1, "Species" = 1)) %>%
+    footnote(general = "Percentages may not sum to 100% due to rounding.")
+}
+
+# Summarize results
+summarize_results(comparison_NT)
+
+# Identify significantly over/under-represented species
+significant_species <- function(comparison_data, z_threshold = 1.96) {
+  over_represented <- comparison_data %>%
+    filter(z_score > z_threshold) %>%
+    arrange(desc(z_score))
+  
+  under_represented <- comparison_data %>%
+    filter(z_score < -z_threshold) %>%
+    arrange(z_score)
+  
+  top_10_over <- over_represented %>%
+    dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>%
+    head(10)
+  
+  top_10_under <- under_represented %>%
+    dplyr::select(species, actual_percentage, mean_percentage, difference, z_score) %>%
+    head(10)
+  
+  combined_table <- bind_rows(
+    top_10_over,
+    top_10_under
+  ) %>%
+    mutate(across(where(is.numeric), ~round(., 2)))
+  
+  kable_output <- kable(combined_table, format = "html",
+                        col.names = c("Species", "Actual %", "Random %", "Difference", "SES"),
+                        caption = "Top 10 significantly over/under-represented species in No-Take MPAs") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                  full_width = FALSE) %>%
+    column_spec(1, width = "200px") %>%
+    column_spec(2:5, width = "100px") %>%
+    row_spec(0, bold = TRUE) %>%
+    pack_rows("Over-represented", 1, 10, label_row_css = "background-color: #e6f3ff; color: #000;") %>%
+    pack_rows("Under-represented", 11, 20, label_row_css = "background-color: #fff0e6; color: #000;")
+  
+  footnote_text <- paste(
+    "Total significantly over-represented species:", nrow(over_represented), "\n",
+    "Total significantly under-represented species:", nrow(under_represented)
+  )
+  
+  kable_output <- kable_output %>%
+    footnote(general = footnote_text, general_title = "Note:")
+  
+  # Save as PNG
+  save_kable(kable_output,
+             file = here::here("outputs", "significant_species_NT.png"),
+             zoom = 2)
+  
+  return(kable_output)
+}
+
+# Identify significant species and save as PNG
+significant_species(comparison_NT)
+
+# Stacked bar chart
+# Create a summary dataframe for plotting
+summary_NT <- data.frame(
+  Representation = c("Under-represented", "Equally represented", "Over-represented"),
+  Percentage = c(
+    mean(comparison_NT$difference < 0, na.rm = TRUE) * 100,
+    100 - mean(comparison_NT$difference > 0, na.rm = TRUE) * 100 - mean(comparison_NT$difference < 0, na.rm = TRUE) * 100,
+    mean(comparison_NT$difference > 0, na.rm = TRUE) * 100
+  )
+)
+
+# Order the factor levels in reverse for proper stacking
+summary_NT$Representation <- factor(summary_NT$Representation,
+                                    levels = c("Over-represented", "Equally represented", "Under-represented"))
+
+# Create the horizontal stacked barplot
+stacked_bar_chart <- ggplot(summary_NT, aes(x = 1, y = Percentage, fill = Representation)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.5) +
+  scale_fill_manual(values = c("Over-represented" = "#56B4E9",
+                                "Equally represented" = "#999999",
+                                "Under-represented" = "#E69F00"),
+                    breaks = c("Under-represented", "Equally represented", "Over-represented")) +
+  geom_text(aes(label = sprintf("%.2f%%", Percentage)),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4) +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "Percentage of species (%)"
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+
+# Display the plot
+print(stacked_bar_chart)
+```
+
+# Breakdown of under-represented species
+
+```{r}
+# Identify under-represented species (where actual coverage is less than random)
+under_represented_NT <- comparison_NT %>%
+  filter(difference < 0) %>%
+  arrange(difference) %>%
+  dplyr::select(species, actual_percentage, mean_percentage, difference, z_score)
+
+# Count the number of under-represented species
+n_under_NT <- nrow(under_represented_NT)
+
+# Print the counts and percentages
+cat(paste("Under-represented species in No-take MPAs:", n_under_NT,
+          "(", round(n_under_NT/nrow(comparison_NT)*100, 1), "% of all species)\n"))
+
+# Save the list of under-represented species to CSV file
+write.csv(under_represented_NT, 
+          here::here("Outputs", "under_represented_species_NT_MPAs.csv"), 
+          row.names = FALSE)
+
+# Create summary data frame with additional information
+under_rep_NT_summary <- under_represented_NT %>%
+  mutate(protection_gap = mean_percentage - actual_percentage,
+         representation_ratio = actual_percentage / mean_percentage) %>%
+  arrange(desc(protection_gap))
+
+# Save the enhanced summary data
+write.csv(under_rep_NT_summary, 
+          here::here("Outputs", "under_represented_species_NT_MPAs_summary.csv"), 
+          row.names = FALSE)
+
+## Compare with IUCN data 
+
+# Define the function to prepare IUCN data
+prepare_iucn_data <- function(species_data, species_col) {
+  # Rename the species column in the input data to match
+  species_data_renamed <- species_data %>%
+    dplyr::rename(species = all_of(species_col))
+  
+  # Ensure we're only joining based on the species name
+  species_data_slim <- species_data_renamed %>%
+    dplyr::select(species)
+  
+  results_IUCN <- inner_join(IUCN, species_data_slim, by = "species") %>%
+    mutate(IUCN_status = case_when(
+      iucn_GE == 0 ~ "LC",
+      iucn_GE == 1 ~ "NT",
+      iucn_GE == 2 ~ "VU",
+      iucn_GE == 3 ~ "EN",
+      iucn_GE == 4 ~ "CR",
+      TRUE ~ "Unknown"
+    )) %>%
+    filter(IUCN_status != "Unknown")
+  
+  return(results_IUCN)
+}
+
+# Get species lists for each category
+all_species <- actual_coverage %>% dplyr::select(species)
+under_rep_NT_species <- under_represented_NT %>% dplyr::select(species)
+
+# Use the prepare_iucn_data function to get IUCN statuses for each group separately
+all_species_iucn <- prepare_iucn_data(all_species, "species")
+under_rep_NT_iucn <- prepare_iucn_data(under_rep_NT_species, "species")
+
+# Print count of species with IUCN data in each group
+cat("Total species with IUCN data:", nrow(all_species_iucn), "\n")
+cat("Under-represented No-take MPAs species with IUCN data:", nrow(under_rep_NT_iucn), "\n")
+
+# Function to summarize IUCN status distribution
+summarize_iucn <- function(data, title) {
+  # Count species by IUCN status
+  iucn_counts <- data %>%
+    group_by(IUCN_status) %>%
+    summarise(
+      count = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      percentage = count / sum(count) * 100,
+      title = title
+    )
+  
+  # Order IUCN statuses correctly
+  iucn_counts$IUCN_status <- factor(iucn_counts$IUCN_status,
+                                    levels = c("LC", "NT", "VU", "EN", "CR"))
+  
+  return(iucn_counts)
+}
+
+# Get IUCN summaries for each dataset
+all_iucn_summary <- summarize_iucn(all_species_iucn, "All Species")
+under_NT_iucn_summary <- summarize_iucn(under_rep_NT_iucn, "Under-represented (No-take MPAs)")
+
+# Print summaries to check
+print(all_iucn_summary)
+print(under_NT_iucn_summary)
+
+# Combine summaries
+combined_iucn_summary <- bind_rows(
+  all_iucn_summary,
+  under_NT_iucn_summary
+)
+
+# Create a bar plot comparing IUCN distributions
+iucn_plot_NT <- ggplot(combined_iucn_summary, aes(x = IUCN_status, y = percentage, fill = title)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5,
+            size = 3) +
+  scale_fill_manual(values = c("All Species" = "grey70",
+                                "Under-represented (No-take MPAs)" = "darkred")) +
+  labs(
+    x = "IUCN Red List threat status",
+    y = "Percentage of species (%)",
+    fill = ""
+  ) +
+  theme_classic() +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+# Print the plot
+print(iucn_plot_NT)
+
+# Save the plot
+ggsave(here::here("Outputs", "under_represented_species_iucn_comparison_NT.png"),
+       iucn_plot_NT, width = 10, height = 6, dpi = 300)
+
+# Statistical test: Chi-square test to determine if there are significant differences
+# in IUCN status distribution between all species and under-represented species
+# Prepare contingency tables
+prepare_contingency <- function(summary_df1, summary_df2) {
+  # Ensure all IUCN categories are present in both datasets
+  all_categories <- c("LC", "NT", "VU", "EN", "CR")
+  
+  # Fill in missing categories with zero
+  for (cat in all_categories) {
+    if (!cat %in% summary_df1$IUCN_status) {
+      summary_df1 <- bind_rows(summary_df1,
+                              data.frame(IUCN_status = cat, count = 0,
+                                         percentage = 0, title = unique(summary_df1$title)))
+    }
+    
+    if (!cat %in% summary_df2$IUCN_status) {
+      summary_df2 <- bind_rows(summary_df2,
+                              data.frame(IUCN_status = cat, count = 0,
+                                         percentage = 0, title = unique(summary_df2$title)))
+    }
+  }
+  
+  # Order and extract counts
+  df1_ordered <- summary_df1 %>%
+    arrange(factor(IUCN_status, levels = all_categories)) %>%
+    pull(count)
+  
+  df2_ordered <- summary_df2 %>%
+    arrange(factor(IUCN_status, levels = all_categories)) %>%
+    pull(count)
+  
+  # Create contingency table
+  return(rbind(df1_ordered, df2_ordered))
+}
+
+# Perform chi-square test
+contingency_NT <- prepare_contingency(all_iucn_summary, under_NT_iucn_summary)
+rownames(contingency_NT) <- c("All Species", "Under-represented (No-take MPAs)")
+colnames(contingency_NT) <- c("LC", "NT", "VU", "EN", "CR")
+
+# Print contingency table
+cat("Contingency Table - No-take MPAs:\n")
+print(contingency_NT)
+cat("\n")
+
+# Run chi-square test
+chi_test_NT <- chisq.test(contingency_NT)
+
+# Print results
+cat("Chi-square Test - No-take MPAs vs. All Species:\n")
+print(chi_test_NT)
+cat("\n")
+
+# Create a summary table with the IUCN distribution
+iucn_summary_table <- combined_iucn_summary %>%
+  pivot_wider(
+    id_cols = IUCN_status,
+    names_from = title,
+    values_from = c(count, percentage)
+  ) %>%
+  arrange(factor(IUCN_status, levels = c("LC", "NT", "VU", "EN", "CR")))
+
+# Save the summary tables
+write.csv(iucn_summary_table,
+          here::here("Outputs", "under_represented_species_iucn_summary_NT.csv"),
+          row.names = FALSE)
+```
+
+# Map results of the GAP analyses
+
+## Map mean Standardised Effect Sizes of MPA coverage
+
+```{r}
+# Get land polygons from rnaturalearth
+land <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Create template raster
+template_raster <- rast(ext(High_seas), resolution = 0.5)
+
+# Rasterize high seas polygon
+highseas_raster <- rasterize(vect(High_seas), template_raster, field = 1, background = 0)
+
+# Plot to verify
+plot(highseas_raster,
+     main = "High Seas (1) vs Continental Waters (0)",
+     col = c("lightblue", "darkblue"))
+
+# For No-take MPAs
+difference_sp <- comparison_NT[, c(1, 3, 6)]
+
+# Calculate cleaned SES for each species in comparison_NT
+comparison_NT <- comparison_NT %>%
+  mutate(SES_clean = case_when(
+    sd_percentage == 0 & actual_percentage == mean_percentage ~ 0,
+    sd_percentage == 0 & actual_percentage > mean_percentage ~ 3,   # Cap at +3
+    sd_percentage == 0 & actual_percentage < mean_percentage ~ -3,  # Cap at -3
+    TRUE ~ (actual_percentage - mean_percentage) / sd_percentage
+  ))
+
+# Reshape puvsp_marine from wide to long format
+puvsp_long <- puvsp_marine %>%
+  pivot_longer(cols = -c(id, lon, lat), names_to = "species", values_to = "presence") %>%
+  filter(!is.na(presence) & presence == 1)  # Only keep rows where species is present
+
+# Join SES data to puvsp_long
+combined_data_clean <- puvsp_long %>%
+  left_join(comparison_NT %>% select(species, SES_clean), by = c("species" = "species"))
+
+# Calculate mean SES per cell with cleaned values
+mean_ses_per_cell_clean <- combined_data_clean %>%
+  group_by(id, lon, lat) %>%
+  summarise(mean_SES = mean(SES_clean, na.rm = TRUE), .groups = "drop")
+
+# Check the cleaned results
+summary(mean_ses_per_cell_clean$mean_SES)
+
+# Convert to terra SpatVector for extraction
+ses_points_NT <- vect(as.data.frame(mean_ses_per_cell_clean),
+                      geom = c("lon", "lat"),
+                      crs = crs(highseas_raster))
+
+# Extract values from highseas raster
+highseas_values_NT <- terra::extract(highseas_raster, ses_points_NT)
+
+# Add highseas classification back to the dataframe
+mean_ses_per_cell_clean$is_highseas <- highseas_values_NT[, 2]
+mean_ses_per_cell_clean$is_highseas[is.na(mean_ses_per_cell_clean$is_highseas)] <- 0  # Set NA to 0 (continental)
+
+# Convert to sf for mapping
+mean_ses_sf_NT <- st_as_sf(mean_ses_per_cell_clean, coords = c("lon", "lat"), crs = 4326)
+
+# Filter for continental waters only
+continental_points_NT <- mean_ses_sf_NT[mean_ses_sf_NT$is_highseas == 0, ]
+
+# Define the projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Project datasets
+continental_projected_NT <- st_transform(continental_points_NT, crs = mcbryde_thomas_2)
+land_projected <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create the globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90),
+                    c(180, 90), c(180, -90), c(-180, -90))
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+# Create plot for continental waters - No-take MPAs with McBryde-Thomas projection
+continental_plot_NT <- ggplot() +
+  geom_sf(data = continental_projected_NT, aes(color = mean_SES), size = 0.5, alpha = 0.7) +
+  geom_sf(data = land_projected, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradient2(
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
+    midpoint = 0,
+    limits = c(-3, 3),
+    oob = scales::squish,
+    name = "Mean SES",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                          title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf() +
+  labs(
+    x = NULL, y = NULL
+  ) +
+  my_theme
+
+# Print the plot
+print(continental_plot_NT)
+
+# Save the plot
+ggsave(here::here("Outputs", "SES_map_continental_NT.png"),
+       continental_plot_NT,
+       width = 10,
+       height = 6,
+       dpi = 300,
+       bg = "white")
+
+#======================
+# Calculate SES by Ecoregion
+#======================
+
+# Convert mean_ses_per_cell to sf for spatial operations
+ses_grid_sf <- mean_ses_per_cell_clean %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+# Spatial join with ecoregions
+ses_grid_ecoregions <- st_join(ses_grid_sf, meow_ecos)
+
+# Calculate mean SES by ecoregion (excluding areas outside ecoregions)
+ecoregion_ses_stats <- ses_grid_ecoregions %>%
+  st_drop_geometry() %>%
+  filter(!is.na(ECOREGION)) %>%  # Exclude areas outside ecoregions
+  group_by(ECOREGION) %>%
+  summarize(
+    PROVINCE = first(PROVINCE),
+    REALM = first(REALM),
+    mean_SES = mean(mean_SES, na.rm = TRUE),
+    median_SES = median(mean_SES, na.rm = TRUE),
+    sd_SES = sd(mean_SES, na.rm = TRUE),
+    n_cells = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_SES))
+
+# Print summary
+cat("Top 10 Ecoregions by Mean SES:\n")
+print(head(ecoregion_ses_stats, 10))
+cat("\nBottom 10 Ecoregions by Mean SES:\n")
+print(tail(ecoregion_ses_stats, 10))
+
+#======================
+# Create SES ecoregion map
+#======================
+
+# Join SES stats back to spatial data
+meow_ecos_ses_stats <- meow_ecos %>%
+  left_join(ecoregion_ses_stats, by = "ECOREGION")
+
+# Plot ecoregions SES map
+ses_eco_map <- ggplot() +
+  geom_sf(data = meow_ecos_ses_stats, aes(fill = mean_SES), color = NA) +
+  geom_sf(data = land, fill = "darkgrey", color = "darkgrey", size = 0.1) +
+  scale_fill_gradient2(
+    name = "Mean SES",
+    low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
+    midpoint = 0,
+    na.value = "grey90",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5,
+                          title.position = "top", title.hjust = 0.5)
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  theme_minimal() +
+  labs(
+    x = NULL, y = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+# Print and save the map
+print(ses_eco_map)
+ggsave(here("Outputs", "ecoregion_SES_map_NT_clean.png"), 
+       ses_eco_map, width = 12, height = 8, dpi = 300)
+
+# Top 20 Ecoregions by Mean SES
+top_ses_plot <- ggplot(head(ecoregion_ses_stats, 20),
+                       aes(x = reorder(ECOREGION, mean_SES), y = mean_SES)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_SES - sd_SES,
+                    ymax = mean_SES + sd_SES),
+                width = 0.2) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = "Mean SES"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Bottom 20 Ecoregions by Mean SES
+bottom_ses_plot <- ggplot(tail(ecoregion_ses_stats, 20),
+                          aes(x = reorder(ECOREGION, mean_SES), y = mean_SES)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_errorbar(aes(ymin = mean_SES - sd_SES,
+                    ymax = mean_SES + sd_SES),
+                width = 0.2) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = "Mean SES"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)
+  )
+
+# Print and save plots
+print(top_ses_plot)
+ggsave(here("Outputs", "top_ecoregions_SES_NT_clean.png"), 
+       top_ses_plot, width = 10, height = 8, dpi = 300)
+
+print(bottom_ses_plot)
+ggsave(here("Outputs", "bottom_ecoregions_SES_NT_clean.png"), 
+       bottom_ses_plot, width = 10, height = 8, dpi = 300)
+
+# Save ecoregion statistics
+write.csv(ecoregion_ses_stats,
+          here::here("Outputs", "ecoregion_SES_stats_NT.csv"),
+          row.names = FALSE)
+```
+
+# Relate to IUCN status
+
+## Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with betaregression analysis 
+
+```{r}
+# Join IUCN and results data
+results_IUCN <- left_join(IUCN, actual_coverage, by = c("species"))
+
+# Add IUCN status categories
+results_IUCN <- results_IUCN %>%
+  mutate(IUCN_status = case_when(
+    iucn_GE == 0 ~ "LC",
+    iucn_GE == 1 ~ "NT",
+    iucn_GE == 2 ~ "VU",
+    iucn_GE == 3 ~ "EN",
+    iucn_GE == 4 ~ "CR",
+    TRUE ~ "Unknown"
+  ))
+
+# Filter out the "Unknown" category
+results_IUCN_filtered <- results_IUCN %>%
+  filter(IUCN_status != "Unknown")
+
+#======================
+# Beta Regression for No-take MPAs
+#======================
+
+# Transform percentage to (0,1) with boundary correction for no-take MPAs
+results_IUCN_filtered <- results_IUCN_filtered %>%
+  mutate(
+    n_obs = n(),
+    mpa_coverage_beta_nt = (NT/100 * (n_obs - 1) + 0.5) / n_obs
+  )
+
+# Fit beta regression for no-take MPAs
+mpa_beta_nt <- betareg(mpa_coverage_beta_nt ~ iucn_GE, data = results_IUCN_filtered)
+summary(mpa_beta_nt)
+
+# Get marginal effects
+mpa_margins_nt <- margins(mpa_beta_nt)
+summary(mpa_margins_nt)
+
+# Get predicted values by threat category
+mpa_pred_nt <- predict(mpa_beta_nt,
+                       newdata = data.frame(iucn_GE = 0:4),
+                       type = "response") * 100
+
+print("Predicted No-take MPA coverage by IUCN category:")
+print(data.frame(
+  Category = 0:4,
+  IUCN = c("LC", "NT", "VU", "EN", "CR"),
+  Predicted_Coverage = round(mpa_pred_nt, 2)
+))
+
+# Average decrease per category
+avg_decrease_nt <- mean(diff(mpa_pred_nt))
+print(paste("Average decrease per threat category:", round(avg_decrease_nt, 2), "%"))
+
+#======================
+# Ridge Plot with Points - No-take MPAs
+#======================
+
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",
+  "EN" = "#FC7F3F",
+  "VU" = "#FEC748",
+  "NT" = "#58AFFF",
+  "LC" = "#38AB38"
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
+# Prepare no-take MPA data for plotting
+notake_mpa_iucn <- results_IUCN_filtered %>%
+  dplyr::select(species, IUCN_status, NT) %>%
+  rename(protection = NT)
+
+# Create the ridge plot with colored points
+rdplot_points <- ggplot(notake_mpa_iucn, 
+                        aes(x = factor(IUCN_status, levels = iucn_order), 
+                            y = protection)) +
+  geom_jitter(aes(color = IUCN_status),
+              width = 0.1, 
+              size = 1.5, 
+              alpha = 0.6) +
+  # Mean and SD statistics
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 3, 
+               color = "black") +
+  stat_summary(fun.data = function(x) {
+    mean_val <- mean(x, na.rm = TRUE)
+    sd_val <- sd(x, na.rm = TRUE)
+    return(data.frame(y = mean_val, 
+                      ymin = max(0, mean_val - sd_val),
+                      ymax = mean_val + sd_val))
+  },
+  geom = "errorbar", 
+  width = 0.1, 
+  color = "black") +
+  labs(x = "IUCN Red List threat status", 
+       y = "(%) Range within no-take MPAs") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none",
+    panel.grid.major.x = element_blank()
+  ) +
+  scale_x_discrete(limits = iucn_order) +
+  scale_color_manual(values = iucn_colors) +
+  scale_y_sqrt(limits = c(0, 50),
+               breaks = seq(0, 50, 10),
+               labels = c("0", "10", "20", "30", "40", ""))
+
+print(rdplot_points)
+
+# Add white background to the plot
+rdplot_points_white <- rdplot_points + 
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+# Save PNG with white background
+ggsave(
+  filename = here::here("Outputs", "notake_mpa_protection_points.png"),
+  plot = rdplot_points_white,
+  width = 6,
+  height = 5,
+  dpi = 300,
+  bg = "white"
+)
+
+# Summary statistics for no-take MPAs
+summary_stats_nt <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean = mean(NT, na.rm = TRUE),
+    median = median(NT, na.rm = TRUE),
+    sd = sd(NT, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print("Summary statistics for No-take MPAs:")
+print(summary_stats_nt)
+```
