@@ -1,5 +1,5 @@
 ---
-title: "Manuscript_analyses"
+title: "Manuscript_gap_analysis"
 author: "Théophile L. Mouton"
 date: "November 5, 2025"
 format:
@@ -7,7 +7,7 @@ format:
     toc: true
     toc-location: right
     css: custom.css
-    output-file: "Manuscript_analyses.html"
+    output-file: "Manuscript_gap_analysis.html"
     self-contained: true
     code-fold: true
     code-tools: true
@@ -45,11 +45,10 @@ library(tidyverse)
 library(ggridges)
 library(betareg)
 library(margins)
+library(ggpubr)
 ```
 
 # Load the data
-
-## Load the species presence grid and the no-take MPA raster layer
 
 ```{r}
 # Species presence grid 
@@ -70,7 +69,7 @@ eez <- st_read(here("Data", "World_EEZ_v12_20231025", "eez_v12.shp"), quiet = TR
 # Bathymetry raster layer
 Bathy <- raster(here::here("Data", "bathymetry-0.1deg-adjusted.tif"))
 
-# Load IUCN data
+# IUCN statuses
 IUCN <- readRDS(here::here("Data", "GAP analyses", "sharks_iucn_final.RDS"))
 IUCN$species <- gsub("_", " ", IUCN$Species)
 ```
@@ -274,7 +273,7 @@ nt_map_projected <- ggplot() +
 print(nt_map_projected)
 
 # Save the projected map (continental waters only)
-ggsave(here::here("NT_MPA_coverage_continental.png"), nt_map_projected, width = 10, height = 7, dpi = 300)
+ggsave(here::here("Outputs","NT_MPA_coverage_continental.png"), nt_map_projected, width = 10, height = 7, dpi = 300)
 
 # Report continental waters statistics
 cat("\nContinental Waters Statistics:\n")
@@ -421,7 +420,7 @@ eez_map <- ggplot() +
   geom_sf(data = ne_countries(scale = "medium", returnclass = "sf"), 
           fill = "lightgrey", color = "darkgrey", size = 0.1) +
   scale_fill_viridis_c(
-    name = "Mean % range in\nNo-Take MPAs",
+    name = "Mean % range in No-Take MPAs",
     na.value = "grey90",
     trans = "sqrt",
     guide = guide_colorbar(barwidth = 20, barheight = 0.5,
@@ -438,7 +437,7 @@ eez_map <- ggplot() +
   )
 
 # Save EEZ map
-ggsave(here("Results", "eez_NT_coverage_map.png"), eez_map, width = 12, height = 8, dpi = 300)
+ggsave(here("Outputs", "eez_NT_coverage_map.png"), eez_map, width = 12, height = 8, dpi = 300)
 
 # 3. Bar plots for top regions
 # Top 20 Ecoregions
@@ -499,12 +498,12 @@ top_eez_plot <- ggplot(head(eez_stats, 20), aes(x = reorder(TERRITORY1, mean_NT_
   )
 
 # Save top EEZs plot
-ggsave(here("Results", "top_eezs_NT_coverage.png"), top_eez_plot, width = 10, height = 8, dpi = 300)
+ggsave(here("Outputs", "top_eezs_NT_coverage.png"), top_eez_plot, width = 10, height = 8, dpi = 300)
 ```
 
 # Null model of MPA placement within EEZs
 
-Null model of MPA placement and overlaps with the range of sharks and rays
+## Null model of MPA placement and overlaps with the range of sharks and rays
 
 ```{r}
 # Create marine mask from bathymetry (areas < 0)
@@ -656,7 +655,7 @@ if (exists("random_results_NT")) {
 
 # Compare results
 
-Compare results between the MPA network and the Null model of MPA placement
+## Compare results between the MPA network and the Null model of MPA placement
 
 ```{r}
 # Load actual MPA coverage data
@@ -753,7 +752,7 @@ significant_species <- function(comparison_data, z_threshold = 1.96) {
   
   # Save as PNG
   save_kable(kable_output,
-             file = here::here("outputs", "significant_species_NT.png"),
+             file = here::here("Outputs", "significant_species_NT.png"),
              zoom = 2)
   
   return(kable_output)
@@ -1260,7 +1259,7 @@ write.csv(ecoregion_ses_stats,
 
 # Relate to IUCN status
 
-## Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with betaregression analysis 
+## Relate the percentage of species range overlapped by MPAs to the IUCN Red List status with betaregression analysis
 
 ```{r}
 # Join IUCN and results data
@@ -1406,4 +1405,36 @@ summary_stats_nt <- results_IUCN_filtered %>%
 
 print("Summary statistics for No-take MPAs:")
 print(summary_stats_nt)
+```
+
+# Grid of Fig. 1
+
+```{r}
+final_plot_combined = ggpubr::ggarrange(
+  rdplot_points_white,                       
+  nt_map_projected,
+  stacked_bar_chart,                  
+  continental_plot_NT,
+  nrow = 4,
+  ncol = 1, 
+  labels = c("(A)", "(B)", "(C)", "(D)"),
+  heights = c(0.8, 1.5, 0.4, 1.5), 
+  font.label = list(size = 16, face = "bold"),
+  vjust = 1,
+  hjust = -0.1)
+
+print(final_plot_combined)
+
+# Define the output path using `here`
+output_path <- here::here("Outputs", "Fig_1_combined_points_3.png")
+
+# Save the final plot using `ggsave`
+ggsave(
+  filename = output_path,    # File path for saving
+  plot = final_plot_combined,         # The combined plot
+  width = 8,                 # Width of the output (in inches)
+  height = 17.35,               # Height of the output (in inches)
+  dpi = 300, # Resolution (300 DPI for high quality)
+  bg = "white", 
+)
 ```

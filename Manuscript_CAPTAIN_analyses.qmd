@@ -1,0 +1,1226 @@
+---
+title: "Manuscript_CAPTAIN_analyses"
+author: "Théophile L. Mouton"
+date: "November 5, 2025"
+format:
+  html:
+    toc: true
+    toc-location: right
+    css: custom.css
+    output-file: "Manuscript_CAPTAIN_analyses.html"
+    self-contained: true
+    code-fold: true
+    code-tools: true
+editor: visual
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+# Load libraries 
+
+```{r}
+library(here)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(smoothr)
+library(raster)
+library(readr)
+library(tidyr)
+library(ggpubr)
+library(betareg)
+library(broom)
+library(margins)
+library(patchwork)
+```
+
+# Load the data
+
+```{r}
+# Read the CAPTAIN2 EDGE2 RDS file
+CAPTAIN2_EDGE2_data <- readRDS(here::here("Data/CAPTAIN2_EDGE_full_results_averaged_budget0.1_replicates50.rds"))
+
+# Read the CAPTAIN2 FUSE RDS file
+CAPTAIN2_FUSE_data <- readRDS(here::here("Data/CAPTAIN2_FUSE_res_full_results_averaged_budget0.1_replicates50.rds"))
+
+# Read the CAPTAIN2 IUCN RDS file
+CAPTAIN2_IUCN_data <- readRDS(here::here("Data/CAPTAIN2_IUCN_full_results_averaged_budget0.1_replicates50.rds"))
+
+# Load one of your input raster files to extract the correct grid structure
+# Use the same raster file for consistency
+raster_file <- here::here("Data", "tif files continental", "Psammobatis_parvacauda.tif")
+
+# Check if the file exists
+if (!file.exists(raster_file)) {
+  stop("Raster file not found. Please provide a valid path to one of your input raster files.")
+}
+
+# Load the raster
+r <- raster(raster_file)
+
+# Read the protected range fractions RDS file
+protected_fractions <- readRDS(here::here("Data", "CAPTAIN2_protected_range_fractions_2ndrun.rds"))
+
+# Read the continental shark conservation metrics CSV file
+shark_metrics <- read_csv(here::here("Data", "continental_shark_conservation_metrics_10_harmonised_IUCN_categories.csv"))
+```
+
+# EDGE2 continental 0.1 budget
+
+```{r}
+# Analyze non-zero cells in the prioritization output
+cat("Analyzing cells with non-zero priority values in CAPTAIN2 EDGE2 output:\n")
+total_cells <- nrow(CAPTAIN2_EDGE2_data)
+nonzero_cells <- sum(CAPTAIN2_EDGE2_data$Priority > 0, na.rm = TRUE)
+zero_cells <- sum(CAPTAIN2_EDGE2_data$Priority == 0, na.rm = TRUE)
+na_cells <- sum(is.na(CAPTAIN2_EDGE2_data$Priority))
+
+cat("Total cells in grid:", total_cells, "\n")
+cat("Cells with non-zero priority:", nonzero_cells, " (", round(nonzero_cells/total_cells*100, 2), "%)\n", sep="")
+cat("Cells with zero priority:", zero_cells, " (", round(zero_cells/total_cells*100, 2), "%)\n", sep="")
+cat("Cells with NA priority:", na_cells, " (", round(na_cells/total_cells*100, 2), "%)\n", sep="")
+
+# Summary statistics of priority values
+priority_summary <- summary(CAPTAIN2_EDGE2_data$Priority)
+cat("\nSummary statistics of priority values:\n")
+print(priority_summary)
+
+# Distribution of non-zero priority values
+nonzero_priority <- CAPTAIN2_EDGE2_data$Priority[CAPTAIN2_EDGE2_data$Priority > 0]
+cat("\nDistribution of non-zero priority values:\n")
+priority_quantiles <- quantile(nonzero_priority, probs = seq(0, 1, 0.1), na.rm = TRUE)
+print(priority_quantiles)
+
+# Load one of your input raster files to extract the correct grid structure
+raster_file <- here::here("Data", "tif files continental", "Psammobatis_parvacauda.tif")
+
+# Check if the file exists
+if (!file.exists(raster_file)) {
+  stop("Raster file not found. Please provide a valid path to one of your input raster files.")
+}
+
+# Load the raster
+r <- raster(raster_file)
+
+# Get the dimensions of the raster
+nrows <- nrow(r)
+ncols <- ncol(r)
+
+# Confirm dimensions match expected values
+if (nrows != 323 || ncols != 720) {
+  warning("Raster dimensions don't match expected values. Proceeding with actual dimensions.")
+}
+
+# Create a grid of coordinates for each cell
+coords <- as.data.frame(coordinates(r))
+names(coords) <- c("Longitude", "Latitude")
+
+# Add cell IDs (PUID) to the coordinates
+coords$PUID <- 1:nrow(coords)
+
+# Now join with the CAPTAIN2 data based on PUID
+CAPTAIN2_EDGE2_data_with_coords <- CAPTAIN2_EDGE2_data %>%
+  left_join(coords, by = "PUID")
+
+# Check if the join worked correctly
+if (sum(is.na(CAPTAIN2_EDGE2_data_with_coords$Longitude)) > 0) {
+  warning("Some PUIDs from CAPTAIN2 data couldn't be matched to coordinates.")
+}
+
+# Filter to keep only cells with non-zero priority for faster plotting
+CAPTAIN2_EDGE2_data_nonzero <- CAPTAIN2_EDGE2_data_with_coords %>%
+  filter(Priority > 0) %>%
+  filter(!is.na(Longitude), !is.na(Latitude))  # Remove any rows with missing coords
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform the dataset to sf object and project
+CAPTAIN2_EDGE2_sf <- st_as_sf(
+  CAPTAIN2_EDGE2_data_nonzero, 
+  coords = c("Longitude", "Latitude"), 
+  crs = crs(r, asText = TRUE)  # Use the raster's CRS
+) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected_CAPTAIN2_EDGE2 <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border_CAPTAIN2_EDGE2 <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme_CAPTAIN2_EDGE2 <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
+  )
+
+# Create the plot
+CAPTAIN2_EDGE2_plot <- ggplot() +
+  geom_sf(data = CAPTAIN2_EDGE2_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Global Conservation Priorities",
+       subtitle = "CAPTAIN2 - EDGE2 Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_EDGE2
+
+# Display the plot
+print(CAPTAIN2_EDGE2_plot)
+
+# Save the plot
+ggsave(
+  filename = here::here("Outputs", "CAPTAIN2_2ndrun_EDGE2_priorities_01_2.png"),
+  plot = CAPTAIN2_EDGE2_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# FUSE continental 0.1 budget
+
+```{r}
+# Get the dimensions of the raster
+nrows <- nrow(r)
+ncols <- ncol(r)
+
+# Confirm dimensions match expected values
+if (nrows != 323 || ncols != 720) {
+  warning("Raster dimensions don't match expected values. Proceeding with actual dimensions.")
+}
+
+# Create a grid of coordinates for each cell
+# This gives us the center coordinates of each cell
+coords <- as.data.frame(coordinates(r))
+names(coords) <- c("Longitude", "Latitude")
+
+# Add cell IDs (PUID) to the coordinates
+coords$PUID <- 1:nrow(coords)
+
+# Now join with the CAPTAIN2 FUSE data based on PUID
+CAPTAIN2_FUSE_data_with_coords <- CAPTAIN2_FUSE_data %>%
+  left_join(coords, by = "PUID")
+
+# Check if the join worked correctly
+if (sum(is.na(CAPTAIN2_FUSE_data_with_coords$Longitude)) > 0) {
+  warning("Some PUIDs from CAPTAIN2 FUSE data couldn't be matched to coordinates.")
+}
+
+# Filter to keep only cells with non-zero priority for faster plotting
+CAPTAIN2_FUSE_data_nonzero <- CAPTAIN2_FUSE_data_with_coords %>%
+  filter(Priority > 0) %>%
+  filter(!is.na(Longitude), !is.na(Latitude))  # Remove any rows with missing coords
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform the dataset to sf object and project
+CAPTAIN2_FUSE_sf <- st_as_sf(
+  CAPTAIN2_FUSE_data_nonzero, 
+  coords = c("Longitude", "Latitude"), 
+  crs = crs(r, asText = TRUE)  # Use the raster's CRS
+) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected_CAPTAIN2_FUSE <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border_CAPTAIN2_FUSE <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme_CAPTAIN2_FUSE <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank())      # Add this line
+
+# Create the plot
+CAPTAIN2_FUSE_plot <- ggplot() +
+  geom_sf(data = CAPTAIN2_FUSE_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_FUSE, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_FUSE, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Global Conservation Priorities",
+       subtitle = "CAPTAIN2 - FUSE Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_FUSE
+
+# Display the plot
+print(CAPTAIN2_FUSE_plot)
+
+# Save the plot
+ggsave(
+  filename = here::here("Outputs", "CAPTAIN2_FUSE_priorities_01_2.png"),
+  plot = CAPTAIN2_FUSE_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# IUCN continental 0.1 budget
+
+```{r}
+# Get the dimensions of the raster
+nrows <- nrow(r)
+ncols <- ncol(r)
+
+# Confirm dimensions match expected values
+if (nrows != 323 || ncols != 720) {
+  warning("Raster dimensions don't match expected values. Proceeding with actual dimensions.")
+}
+
+# Create a grid of coordinates for each cell
+# This gives us the center coordinates of each cell
+coords <- as.data.frame(coordinates(r))
+names(coords) <- c("Longitude", "Latitude")
+
+# Add cell IDs (PUID) to the coordinates
+coords$PUID <- 1:nrow(coords)
+
+# Now join with the CAPTAIN2 IUCN data based on PUID
+CAPTAIN2_IUCN_data_with_coords <- CAPTAIN2_IUCN_data %>%
+  left_join(coords, by = "PUID")
+
+# Check if the join worked correctly
+if (sum(is.na(CAPTAIN2_IUCN_data_with_coords$Longitude)) > 0) {
+  warning("Some PUIDs from CAPTAIN2 IUCN data couldn't be matched to coordinates.")
+}
+
+# Filter to keep only cells with non-zero priority for faster plotting
+CAPTAIN2_IUCN_data_nonzero <- CAPTAIN2_IUCN_data_with_coords %>%
+  filter(Priority > 0) %>%
+  filter(!is.na(Longitude), !is.na(Latitude))  # Remove any rows with missing coords
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Transform the dataset to sf object and project
+CAPTAIN2_IUCN_sf <- st_as_sf(
+  CAPTAIN2_IUCN_data_nonzero, 
+  coords = c("Longitude", "Latitude"), 
+  crs = crs(r, asText = TRUE)  # Use the raster's CRS
+) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected_CAPTAIN2_IUCN <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border_CAPTAIN2_IUCN <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme_CAPTAIN2_IUCN <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
+  )
+
+# Create the plot
+CAPTAIN2_IUCN_plot <- ggplot() +
+  geom_sf(data = CAPTAIN2_IUCN_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_IUCN, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_IUCN, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Global Conservation Priorities",
+       subtitle = "CAPTAIN2 - IUCN Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_IUCN
+
+# Display the plot
+print(CAPTAIN2_IUCN_plot)
+
+# Save the plot
+ggsave(
+  filename = here::here("Outputs", "CAPTAIN2_IUCN_priorities_01_2.png"),
+  plot = CAPTAIN2_IUCN_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# Difference maps
+
+```{r}
+# Create a grid of coordinates for each cell
+coords <- as.data.frame(coordinates(r))
+names(coords) <- c("Longitude", "Latitude")
+
+# Add cell IDs (PUID) to the coordinates
+coords$PUID <- 1:nrow(coords)
+
+# Join all three datasets with coordinates
+IUCN_with_coords <- CAPTAIN2_IUCN_data %>%
+  dplyr::select(PUID, IUCN = Priority) %>%
+  left_join(coords, by = "PUID")
+
+EDGE2_with_coords <- CAPTAIN2_EDGE2_data %>%
+  dplyr::select(PUID, EDGE2 = Priority) %>%
+  left_join(coords, by = "PUID") 
+
+FUSE_with_coords <- CAPTAIN2_FUSE_data %>%
+  dplyr::select(PUID, FUSE = Priority) %>%
+  left_join(coords, by = "PUID")
+
+# Combine all datasets
+all_indices <- coords %>%
+  left_join(CAPTAIN2_IUCN_data %>% dplyr::select(PUID, IUCN = Priority), by = "PUID") %>%
+  left_join(CAPTAIN2_EDGE2_data %>% dplyr::select(PUID, EDGE2 = Priority), by = "PUID") %>%
+  left_join(CAPTAIN2_FUSE_data %>% dplyr::select(PUID, FUSE = Priority), by = "PUID")
+
+# Calculate differences
+all_indices <- all_indices %>%
+  mutate(
+    # Replace NA with 0 for calculation purposes
+    IUCN = ifelse(is.na(IUCN), 0, IUCN),
+    EDGE2 = ifelse(is.na(EDGE2), 0, EDGE2),
+    FUSE = ifelse(is.na(FUSE), 0, FUSE),
+    
+    # Calculate differences
+    IUCN_minus_FUSE = IUCN - FUSE,
+    IUCN_minus_EDGE2 = IUCN - EDGE2,
+    EDGE2_minus_FUSE = EDGE2 - FUSE
+  )
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Define the McBryde-Thomas 2 projection
+mcbryde_thomas_2 <- "+proj=mbt_s"
+
+# Create the globe bounding box
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+
+# Create the globe border
+globe_border <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Project the world map
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create base theme
+my_theme <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
+  )
+
+# Filter to non-zero differences for each comparison to reduce plot size
+# IUCN - FUSE
+IUCN_FUSE_diff <- all_indices %>%
+  filter(IUCN_minus_FUSE != 0) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = crs(r, asText = TRUE)) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# IUCN - EDGE2
+IUCN_EDGE2_diff <- all_indices %>%
+  filter(IUCN_minus_EDGE2 != 0) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = crs(r, asText = TRUE)) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# EDGE2 - FUSE
+EDGE2_FUSE_diff <- all_indices %>%
+  filter(EDGE2_minus_FUSE != 0) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = crs(r, asText = TRUE)) %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Create a diverging color palette for difference maps
+# Blue for negative (first index lower), white for zero, red for positive (first index higher)
+diff_colors <- c("#2166AC", "#4393C3", "#92C5DE", "#D1E5F0", "#FFFFFF", 
+                "#FDDBC7", "#F4A582", "#D6604D", "#B2182B")
+
+# 1. IUCN - FUSE Difference Map
+IUCN_FUSE_plot <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = IUCN_FUSE_diff, aes(color = IUCN_minus_FUSE), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (IUCN - FUSE)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities",
+       subtitle = "IUCN Index minus FUSE Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# 2. IUCN - EDGE2 Difference Map
+IUCN_EDGE2_plot <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = IUCN_EDGE2_diff, aes(color = IUCN_minus_EDGE2), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (IUCN - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities",
+       subtitle = "IUCN Index minus EDGE2 Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# 3. EDGE2 - FUSE Difference Map
+EDGE2_FUSE_plot <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = EDGE2_FUSE_diff, aes(color = EDGE2_minus_FUSE), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "black", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (EDGE2 - FUSE)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(title = "Difference in Conservation Priorities",
+       subtitle = "EDGE2 Index minus FUSE Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Display all plots
+print(IUCN_FUSE_plot)
+print(IUCN_EDGE2_plot)
+print(EDGE2_FUSE_plot)
+
+# Save all plots
+ggsave(
+  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_FUSE_difference_2.png"),
+  plot = IUCN_FUSE_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  filename = here::here("outputs", "CAPTAIN2_IUCN_minus_EDGE2_difference_2.png"),
+  plot = IUCN_EDGE2_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  filename = here::here("outputs", "CAPTAIN2_EDGE2_minus_FUSE_difference_2.png"),
+  plot = EDGE2_FUSE_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# Species level priorities 
+
+```{r}
+# Rename column in shark_metrics to match better
+shark_metrics <- shark_metrics %>%
+  rename(Species = `Species name`)
+
+# Order shark_metrics alphabetically by Species name
+shark_metrics <- shark_metrics %>%
+  arrange(Species)
+
+# Add an original order ID to protected_fractions to maintain its original order
+protected_fractions$original_order <- 1:nrow(protected_fractions)
+
+# Add row number as IDs to both datasets
+protected_fractions$protected_ID <- 1:nrow(protected_fractions)
+shark_metrics$species_ID <- 1:nrow(shark_metrics)
+
+# Check if the datasets have the same number of rows
+if(nrow(protected_fractions) == nrow(shark_metrics)) {
+  # Create index mapping
+  indices <- data.frame(
+    protected_ID = 1:nrow(protected_fractions),
+    species_ID = 1:nrow(shark_metrics)
+  )
+  
+  # Join protected_fractions with indices
+  protected_with_indices <- protected_fractions %>%
+    left_join(indices, by = "protected_ID")
+  
+  # Join shark_metrics with indices
+  shark_with_indices <- shark_metrics %>%
+    left_join(indices, by = "species_ID")
+  
+  # Now join the datasets
+  combined_data <- protected_with_indices %>%
+    inner_join(
+      shark_with_indices,
+      by = c("species_ID", "protected_ID"),
+      suffix = c("_captain", "_original")
+    ) %>%
+    arrange(original_order)
+  
+  cat("Successfully joined datasets with", nrow(combined_data), "species\n")
+  
+  # Define IUCN categories and order
+  iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+  
+  iucn_colors <- c(
+    "LC" = "#50C878",
+    "NT" = "#FFFF00",
+    "VU" = "#FFA500",
+    "EN" = "#FF8C00",
+    "CR" = "#FF0000"
+  )
+  
+  # Calculate sample sizes for each group
+  iucn_n <- combined_data %>%
+    group_by(IUCN_original) %>%
+    summarise(n = n()) %>%
+    arrange(IUCN_original)
+  
+  fuse_n <- combined_data %>%
+    group_by(FUSE_original) %>%
+    summarise(n = n()) %>%
+    arrange(FUSE_original)
+  
+  edge2_n <- combined_data %>%
+    group_by(EDGE2_original) %>%
+    summarise(n = n()) %>%
+    arrange(EDGE2_original)
+  
+  # Create x-axis labels with sample sizes
+  iucn_labels <- paste0(iucn_order, "\n(n=", iucn_n$n, ")")
+  fuse_labels <- paste0(1:5, "\n(n=", fuse_n$n, ")")
+  edge2_labels <- paste0(1:5, "\n(n=", edge2_n$n, ")")
+  
+  # 1. IUCN plot
+  iucn_plot <- combined_data %>%
+    mutate(
+      IUCN_status = factor(IUCN_original, levels = 1:5, labels = iucn_order),
+      protection_percentage = IUCN_captain * 100
+    ) %>%
+    ggplot(aes(x = IUCN_status, y = protection_percentage)) +
+    geom_jitter(width = 0.1,
+                size = 0.4,
+                alpha = 0.5,
+                color = "darkgray") +
+    stat_summary(fun = mean,
+                 geom = "point",
+                 size = 3,
+                 color = "black") +
+    stat_summary(fun.data = function(x) {
+      mean_val <- mean(x, na.rm = TRUE)
+      sd_val <- sd(x, na.rm = TRUE)
+      return(data.frame(y = mean_val,
+                        ymin = max(0, mean_val - sd_val),
+                        ymax = min(100, mean_val + sd_val)))
+    },
+    geom = "errorbar",
+    width = 0.1,
+    color = "black") +
+    labs(
+      x = "IUCN Red List threat status",
+      y = "Range protected (%)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      axis.title.x = element_text(size = 16),
+      axis.title.y = element_text(size = 16),
+      axis.text.x = element_text(size = 14),
+      axis.text.y = element_text(size = 14)
+    ) +
+    scale_x_discrete(limits = iucn_order, labels = iucn_labels) +
+    scale_fill_manual(values = iucn_colors) +
+    scale_color_manual(values = iucn_colors) +
+    scale_y_continuous(limits = c(0, 100),
+                       breaks = seq(0, 100, 25))
+  
+  # 2. FUSE plot
+  fuse_plot <- combined_data %>%
+    mutate(
+      FUSE_category = factor(FUSE_original),
+      protection_percentage = FUSE_captain * 100
+    ) %>%
+    ggplot(aes(x = FUSE_category, y = protection_percentage)) +
+    geom_jitter(width = 0.1,
+                size = 0.4,
+                alpha = 0.5,
+                color = "darkgray") +
+    stat_summary(fun = mean,
+                 geom = "point",
+                 size = 3,
+                 color = "black") +
+    stat_summary(fun.data = function(x) {
+      mean_val <- mean(x, na.rm = TRUE)
+      sd_val <- sd(x, na.rm = TRUE)
+      return(data.frame(y = mean_val,
+                        ymin = max(0, mean_val - sd_val),
+                        ymax = min(100, mean_val + sd_val)))
+    },
+    geom = "errorbar",
+    width = 0.1,
+    color = "black") +
+    labs(
+      x = "FUSE Score",
+      y = "Range protected (%)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      axis.title.x = element_text(size = 16),
+      axis.title.y = element_text(size = 16),
+      axis.text.x = element_text(size = 14),
+      axis.text.y = element_text(size = 14)
+    ) +
+    scale_x_discrete(labels = fuse_labels) +
+    scale_y_continuous(limits = c(0, 100),
+                       breaks = seq(0, 100, 25))
+  
+  # 3. EDGE2 plot
+  edge2_plot <- combined_data %>%
+    mutate(
+      EDGE2_category = factor(EDGE2_original),
+      protection_percentage = EDGE2_captain * 100
+    ) %>%
+    ggplot(aes(x = EDGE2_category, y = protection_percentage)) +
+    geom_jitter(width = 0.1,
+                size = 0.4,
+                alpha = 0.5,
+                color = "darkgray") +
+    stat_summary(fun = mean,
+                 geom = "point",
+                 size = 3,
+                 color = "black") +
+    stat_summary(fun.data = function(x) {
+      mean_val <- mean(x, na.rm = TRUE)
+      sd_val <- sd(x, na.rm = TRUE)
+      return(data.frame(y = mean_val,
+                        ymin = max(0, mean_val - sd_val),
+                        ymax = min(100, mean_val + sd_val)))
+    },
+    geom = "errorbar",
+    width = 0.1,
+    color = "black") +
+    labs(
+      x = "EDGE2 Score",
+      y = "Range protected (%)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      axis.title.x = element_text(size = 16),
+      axis.title.y = element_text(size = 16),
+      axis.text.x = element_text(size = 14),
+      axis.text.y = element_text(size = 14)
+    ) +
+    scale_x_discrete(labels = edge2_labels) +
+    scale_y_continuous(limits = c(0, 100),
+                       breaks = seq(0, 100, 25))
+  
+  # Combine the three plots into a grid
+  combined_plots <- ggarrange(
+    iucn_plot,
+    fuse_plot,
+    edge2_plot,
+    ncol = 3,
+    nrow = 1,
+    labels = c("(A)", "(B)", "(C)"),
+    font.label = list(size = 14,
+                      face = "bold",
+                      hjust = -2,
+                      vjust = 1.5)
+  )
+  
+  print(combined_plots)
+  
+  # Save combined plot
+  ggsave(here::here("Outputs", "Fig.2_combined_protection_dotplots.png"),
+         combined_plots, width = 20, height = 6, dpi = 150, bg = "white")
+  
+  #======================
+  # Beta Regression Analysis
+  #======================
+  
+  # Prepare data for beta regression
+  model_data <- combined_data %>%
+    mutate(
+      IUCN_status = IUCN_original,
+      FUSE_score = FUSE_original,
+      EDGE2_score = EDGE2_original,
+      IUCN_protection = IUCN_captain * 100,
+      FUSE_protection = FUSE_captain * 100,
+      EDGE2_protection = EDGE2_captain * 100,
+      # Convert to (0,1) scale and handle boundaries
+      n_obs = n(),
+      IUCN_protection_beta = (IUCN_protection/100 * (n_obs - 1) + 0.5) / n_obs,
+      FUSE_protection_beta = (FUSE_protection/100 * (n_obs - 1) + 0.5) / n_obs,
+      EDGE2_protection_beta = (EDGE2_protection/100 * (n_obs - 1) + 0.5) / n_obs
+    )
+  
+  # Fit beta regression models
+  iucn_beta <- betareg(IUCN_protection_beta ~ IUCN_status, data = model_data)
+  fuse_beta <- betareg(FUSE_protection_beta ~ FUSE_score, data = model_data)
+  edge2_beta <- betareg(EDGE2_protection_beta ~ EDGE2_score, data = model_data)
+  
+  # View summaries
+  cat("\n=== IUCN Beta Regression ===\n")
+  print(summary(iucn_beta))
+  
+  cat("\n=== FUSE Beta Regression ===\n")
+  print(summary(fuse_beta))
+  
+  cat("\n=== EDGE2 Beta Regression ===\n")
+  print(summary(edge2_beta))
+  
+  # Get tidy summaries
+  iucn_tidy <- tidy(iucn_beta)
+  fuse_tidy <- tidy(fuse_beta)
+  edge2_tidy <- tidy(edge2_beta)
+  
+  # Get pseudo R²
+  iucn_r2 <- cor(predict(iucn_beta), model_data$IUCN_protection_beta)^2
+  fuse_r2 <- cor(predict(fuse_beta), model_data$FUSE_protection_beta)^2
+  edge2_r2 <- cor(predict(edge2_beta), model_data$EDGE2_protection_beta)^2
+  
+  # Calculate marginal effects (average change in percentage per unit increase)
+  iucn_margins <- margins(iucn_beta)
+  fuse_margins <- margins(fuse_beta)
+  edge2_margins <- margins(edge2_beta)
+  
+  # Extract AME and SE
+  iucn_ame_summary <- summary(iucn_margins)
+  fuse_ame_summary <- summary(fuse_margins)
+  edge2_ame_summary <- summary(edge2_margins)
+  
+  # Convert to percentage (margins gives proportions)
+  iucn_ame <- iucn_ame_summary$AME * 100
+  iucn_ame_se <- iucn_ame_summary$SE * 100
+  
+  fuse_ame <- fuse_ame_summary$AME * 100
+  fuse_ame_se <- fuse_ame_summary$SE * 100
+  
+  edge2_ame <- edge2_ame_summary$AME * 100
+  edge2_ame_se <- edge2_ame_summary$SE * 100
+  
+  cat("\n=== Average Marginal Effects (as percentages) ===\n")
+  cat(paste("IUCN AME:", round(iucn_ame, 2), "%, SE:", round(iucn_ame_se, 2), "%\n"))
+  cat(paste("FUSE AME:", round(fuse_ame, 2), "%, SE:", round(fuse_ame_se, 2), "%\n"))
+  cat(paste("EDGE2 AME:", round(edge2_ame, 2), "%, SE:", round(edge2_ame_se, 2), "%\n"))
+  
+  # Calculate predicted values and differences
+  # IUCN predictions
+  iucn_pred <- predict(iucn_beta,
+                       newdata = data.frame(IUCN_status = 1:5),
+                       type = "response") * 100
+  
+  cat("\nPredicted protection by IUCN category:\n")
+  print(data.frame(Category = 1:5,
+                   IUCN_Category = c("LC", "NT", "VU", "EN", "CR"),
+                   Predicted_Protection = round(iucn_pred, 2)))
+  
+  iucn_avg_increase <- mean(diff(iucn_pred))
+  cat(paste("Average increase per IUCN category:", round(iucn_avg_increase, 2), "%\n"))
+  
+  # FUSE predictions
+  fuse_pred <- predict(fuse_beta,
+                       newdata = data.frame(FUSE_score = 1:5),
+                       type = "response") * 100
+  
+  cat("\nPredicted protection by FUSE score:\n")
+  print(data.frame(Score = 1:5,
+                   Predicted_Protection = round(fuse_pred, 2)))
+  
+  fuse_avg_increase <- mean(diff(fuse_pred))
+  cat(paste("Average increase per FUSE unit:", round(fuse_avg_increase, 2), "%\n"))
+  
+  # EDGE2 predictions
+  edge2_pred <- predict(edge2_beta,
+                        newdata = data.frame(EDGE2_score = 1:5),
+                        type = "response") * 100
+  
+  cat("\nPredicted protection by EDGE2 score:\n")
+  print(data.frame(Score = 1:5,
+                   Predicted_Protection = round(edge2_pred, 2)))
+  
+  edge2_avg_increase <- mean(diff(edge2_pred))
+  cat(paste("Average increase per EDGE2 unit:", round(edge2_avg_increase, 2), "%\n"))
+  
+  # Create comprehensive summary table with AME
+  comprehensive_summary <- data.frame(
+    Approach = c("IUCN", "FUSE", "EDGE2"),
+    Coefficient_logit = c(
+      iucn_tidy$estimate[2],
+      fuse_tidy$estimate[2],
+      edge2_tidy$estimate[2]
+    ),
+    SE = c(
+      iucn_tidy$std.error[2],
+      fuse_tidy$std.error[2],
+      edge2_tidy$std.error[2]
+    ),
+    z_value = c(
+      iucn_tidy$statistic[2],
+      fuse_tidy$statistic[2],
+      edge2_tidy$statistic[2]
+    ),
+    P_value = c(
+      iucn_tidy$p.value[2],
+      fuse_tidy$p.value[2],
+      edge2_tidy$p.value[2]
+    ),
+    AME_percent = c(
+      iucn_ame,
+      fuse_ame,
+      edge2_ame
+    ),
+    AME_SE = c(
+      iucn_ame_se,
+      fuse_ame_se,
+      edge2_ame_se
+    ),
+    Pseudo_R2 = c(iucn_r2, fuse_r2, edge2_r2)
+  )
+  
+  cat("\n=== Comprehensive Beta Regression Summary ===\n")
+  print(comprehensive_summary)
+  
+  # Save results
+  write.csv(comprehensive_summary,
+            here::here("Outputs", "beta_regression_summary.csv"),
+            row.names = FALSE)
+  
+} else {
+  cat("ERROR: Datasets have different number of rows.\n")
+  cat("Protected fractions:", nrow(protected_fractions), "rows\n")
+  cat("Shark metrics:", nrow(shark_metrics), "rows\n")
+}
+```
+
+# Manuscript maps
+
+### Individual maps
+
+```{r}
+CAPTAIN2_EDGE2_msmap <- ggplot() +
+  geom_sf(data = CAPTAIN2_EDGE2_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority EDGE2",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Global Conservation Priorities",
+       #subtitle = "CAPTAIN2 - EDGE2 Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_EDGE2
+CAPTAIN2_EDGE2_msmap
+
+CAPTAIN2_FUSE_msmap <- ggplot() +
+  geom_sf(data = CAPTAIN2_FUSE_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_FUSE, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_FUSE, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority FUSE",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Global Conservation Priorities",
+       #subtitle = "CAPTAIN2 - FUSE Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_FUSE
+CAPTAIN2_FUSE_msmap
+
+CAPTAIN2_IUCN_msmap <- ggplot() +
+  geom_sf(data = CAPTAIN2_IUCN_sf, aes(color = Priority), size = 0.5, alpha = 0.7) +
+  geom_sf(data = world_projected_CAPTAIN2_IUCN, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_IUCN, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = c("white", "yellow", "darkblue"),
+    values = c(0, 0.5, 1),
+    name = "Priority IUCN",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Global Conservation Priorities",
+       #subtitle = "CAPTAIN2 - IUCN Index, Budget: 0.1, Replicates: 50",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_IUCN
+CAPTAIN2_IUCN_msmap
+
+# Create a function to add labels (A), (B), etc.
+add_panel_labels <- function(plot, label) {
+  plot + 
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0, size = 12)
+    ) +
+    labs(title = paste0("(", label, ")"))
+}
+
+# Add labels to each plot
+# First grid
+CAPTAIN2_IUCN_msmap_labeled <- add_panel_labels(CAPTAIN2_IUCN_msmap, "A")
+CAPTAIN2_FUSE_msmap_labeled <- add_panel_labels(CAPTAIN2_FUSE_msmap, "B")
+CAPTAIN2_EDGE2_msmap_labeled <- add_panel_labels(CAPTAIN2_EDGE2_msmap, "C")
+
+# Combine plots into two separate grids, each with 3 rows and 1 column
+grid1 <- CAPTAIN2_IUCN_msmap_labeled /
+         CAPTAIN2_FUSE_msmap_labeled /
+         CAPTAIN2_EDGE2_msmap_labeled
+
+# Save the grids if needed
+ggsave(here::here("Outputs", "grid1_maps_continental_2ndrun_new.png"), grid1, width = 8, height = 15, dpi = 300)
+
+```
+
+### Difference maps
+
+```{r}
+# 1. IUCN - FUSE Difference Map
+IUCN_FUSE_msmap <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = IUCN_FUSE_diff, aes(color = IUCN_minus_FUSE), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (IUCN - FUSE)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Difference in Conservation Priorities",
+       #subtitle = "IUCN Index minus FUSE Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# 2. IUCN - EDGE2 Difference Map
+IUCN_EDGE2_msmap <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = IUCN_EDGE2_diff, aes(color = IUCN_minus_EDGE2), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (IUCN - EDGE2)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Difference in Conservation Priorities",
+       #subtitle = "IUCN Index minus EDGE2 Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# 3. EDGE2 - FUSE Difference Map
+EDGE2_FUSE_msmap <- ggplot() +
+  geom_sf(data = globe_border, fill = "#F8F8F8", color = NA) +
+  geom_sf(data = EDGE2_FUSE_diff, aes(color = EDGE2_minus_FUSE), size = 0.5) +
+  geom_sf(data = world_projected, fill = "lightgrey", color = "darkgrey", size = 0.1) +
+  geom_sf(data = globe_border, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_gradientn(
+    colors = diff_colors,
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, by = 0.25),
+    labels = as.character(seq(-1, 1, by = 0.25)),
+    name = "Difference in Priority (EDGE2 - FUSE)",
+    guide = guide_colorbar(barwidth = 20, barheight = 0.5, 
+                         title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(#title = "Difference in Conservation Priorities",
+       #subtitle = "EDGE2 Index minus FUSE Index",
+       x = NULL, y = NULL) +
+  my_theme
+
+# Create a function to add labels (A), (B), etc.
+add_panel_labels <- function(plot, label) {
+  plot + 
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0, size = 12)
+    ) +
+    labs(title = paste0("(", label, ")"))
+}
+
+# Add labels to each plot
+# First grid
+IUCN_FUSE_msmap_labeled <- add_panel_labels(IUCN_FUSE_msmap, "A")
+IUCN_EDGE2_msmap_labeled <- add_panel_labels(IUCN_EDGE2_msmap, "B")
+EDGE2_FUSE_msmap_labeled <- add_panel_labels(EDGE2_FUSE_msmap, "C")
+
+# Combine plots into two separate grids, each with 3 rows and 1 column
+grid2 <- IUCN_FUSE_msmap_labeled /
+         IUCN_EDGE2_msmap_labeled /
+         EDGE2_FUSE_msmap_labeled
+
+# Save the grids if needed
+ggsave(here::here("Outputs", "grid3_maps_continental_2ndrun.png"), grid2, width = 16, height = 15, dpi = 300)
+
+```
+
+### Combined individual and difference maps
+
+```{r}
+
+library(patchwork)
+
+# Add labels to each plot
+# First grid
+CAPTAIN2_IUCN_msmap_labeled <- add_panel_labels(CAPTAIN2_IUCN_msmap, "A")
+CAPTAIN2_FUSE_msmap_labeled <- add_panel_labels(CAPTAIN2_FUSE_msmap, "B")
+CAPTAIN2_EDGE2_msmap_labeled <- add_panel_labels(CAPTAIN2_EDGE2_msmap, "C")
+
+# Second grid
+IUCN_FUSE_msmap_labeled <- add_panel_labels(IUCN_FUSE_msmap, "D")
+IUCN_EDGE2_msmap_labeled <- add_panel_labels(IUCN_EDGE2_msmap, "E")
+EDGE2_FUSE_msmap_labeled <- add_panel_labels(EDGE2_FUSE_msmap, "F")
+
+# Create each grid (3 rows, 1 column)
+grid1 <- CAPTAIN2_IUCN_msmap_labeled /
+         CAPTAIN2_FUSE_msmap_labeled /
+         CAPTAIN2_EDGE2_msmap_labeled
+
+grid2 <- IUCN_FUSE_msmap_labeled /
+         IUCN_EDGE2_msmap_labeled /
+         EDGE2_FUSE_msmap_labeled
+
+# Combine the two grids side by side (2 columns)
+combined_grid <- grid1 | grid2
+
+# Display the combined grid
+combined_grid
+
+# If you want to save it
+ggsave(
+  filename = here::here("Outputs", "Fig.3_combined_priority_maps.png"),
+  plot = combined_grid,
+  width = 10,    # Adjust width as needed for two columns
+  height = 12,   # Adjust height as needed for three rows
+  dpi = 300,
+  bg = "white"
+)
+```
