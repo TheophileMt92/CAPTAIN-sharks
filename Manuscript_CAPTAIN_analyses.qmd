@@ -35,6 +35,17 @@ library(betareg)
 library(broom)
 library(margins)
 library(patchwork)
+library(dplyr)
+library(sf)
+library(egg)
+library(spatstat)
+library(sf)
+library(tidyverse)      # For data manipulation and visualization
+library(rnaturalearthdata) # Additional natural earth data
+library(biscale)        # For bivariate mapping
+library(gridExtra)      # For arranging multiple plots
+library(grid)           # For text elements in plots
+library(colorspace)     # For color manipulation
 ```
 
 # Load the data
@@ -66,6 +77,10 @@ protected_fractions <- readRDS(here::here("Data", "CAPTAIN2_protected_range_frac
 
 # Read the continental shark conservation metrics CSV file
 shark_metrics <- read_csv(here::here("Data", "continental_shark_conservation_metrics_10_harmonised_IUCN_categories.csv"))
+
+# Load fishing data
+load(here::here("Data", "Raw", "Predicted_Fishing_Hours_05Deg.Rdata"))
+
 ```
 
 # EDGE2 continental 0.1 budget
@@ -835,7 +850,7 @@ if(nrow(protected_fractions) == nrow(shark_metrics)) {
                        breaks = seq(0, 100, 25))
   
   # Combine the three plots into a grid
-  combined_plots <- ggarrange(
+  combined_plots <- ggpubr::ggarrange(
     iucn_plot,
     fuse_plot,
     edge2_plot,
@@ -1223,4 +1238,741 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
+```
+
+### Combined individual and difference maps
+
+```{r}
+
+library(patchwork)
+
+# Add labels to each plot
+# First grid
+CAPTAIN2_IUCN_msmap_labeled <- add_panel_labels(CAPTAIN2_IUCN_msmap, "A")
+CAPTAIN2_FUSE_msmap_labeled <- add_panel_labels(CAPTAIN2_FUSE_msmap, "B")
+CAPTAIN2_EDGE2_msmap_labeled <- add_panel_labels(CAPTAIN2_EDGE2_msmap, "C")
+
+# Second grid
+IUCN_FUSE_msmap_labeled <- add_panel_labels(IUCN_FUSE_msmap, "D")
+IUCN_EDGE2_msmap_labeled <- add_panel_labels(IUCN_EDGE2_msmap, "E")
+EDGE2_FUSE_msmap_labeled <- add_panel_labels(EDGE2_FUSE_msmap, "F")
+
+# Create each grid (3 rows, 1 column)
+grid1 <- CAPTAIN2_IUCN_msmap_labeled /
+         CAPTAIN2_FUSE_msmap_labeled /
+         CAPTAIN2_EDGE2_msmap_labeled
+
+grid2 <- IUCN_FUSE_msmap_labeled /
+         IUCN_EDGE2_msmap_labeled /
+         EDGE2_FUSE_msmap_labeled
+
+# Combine the two grids side by side (2 columns)
+combined_grid <- grid1 | grid2
+
+# Display the combined grid
+combined_grid
+
+# If you want to save it
+ggsave(
+  filename = here::here("outputs", "combined_priority_maps.png"),
+  plot = combined_grid,
+  width = 10,    # Adjust width as needed for two columns
+  height = 12,   # Adjust height as needed for three rows
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# Spatial distribution analysis 
+
+```{r}
+# Filter for high priority cells (>0.9) and calculate percentages
+# Calculate total coastal cells and high-priority cells for each index
+# IUCN
+CAPTAIN2_IUCN_high <- CAPTAIN2_IUCN_sf %>% 
+  filter(Priority > 0.9)
+iucn_total_cells <- nrow(CAPTAIN2_IUCN_sf)
+iucn_high_cells <- nrow(CAPTAIN2_IUCN_high)
+iucn_percent <- round((iucn_high_cells / iucn_total_cells) * 100, 1)
+
+# FUSE
+CAPTAIN2_FUSE_high <- CAPTAIN2_FUSE_sf %>% 
+  filter(Priority > 0.9)
+fuse_total_cells <- nrow(CAPTAIN2_FUSE_sf)
+fuse_high_cells <- nrow(CAPTAIN2_FUSE_high)
+fuse_percent <- round((fuse_high_cells / fuse_total_cells) * 100, 1)
+
+# EDGE2
+CAPTAIN2_EDGE2_high <- CAPTAIN2_EDGE2_sf %>% 
+  filter(Priority > 0.9)
+edge2_total_cells <- nrow(CAPTAIN2_EDGE2_sf)
+edge2_high_cells <- nrow(CAPTAIN2_EDGE2_high)
+edge2_percent <- round((edge2_high_cells / edge2_total_cells) * 100, 1)
+
+# Print results
+cat("IUCN: ", iucn_high_cells, " cells (", iucn_percent, "%) with priority >0.9\n", sep="")
+cat("FUSE: ", fuse_high_cells, " cells (", fuse_percent, "%) with priority >0.9\n", sep="")
+cat("EDGE2: ", edge2_high_cells, " cells (", edge2_percent, "%) with priority >0.9\n", sep="")
+
+#Mean nearest neighbor for high priority grid cells:
+
+# Function to calculate Mean Nearest Neighbor Distance
+calculate_mnn <- function(sf_high_priority) {
+  # Get centroids and convert to coordinates
+  coords <- st_coordinates(st_centroid(sf_high_priority))
+  
+  # Create a bounding box for the window
+  bbox <- st_bbox(sf_high_priority)
+  
+  # Create observation window
+  window <- owin(xrange = c(bbox["xmin"], bbox["xmax"]),
+                 yrange = c(bbox["ymin"], bbox["ymax"]))
+  
+  # Create point pattern object
+  ppp_obj <- ppp(coords[,1], coords[,2], window = window)
+  
+  # Calculate mean nearest neighbor distance
+  mnn <- mean(nndist(ppp_obj))
+  
+  # Calculate standard deviation for context
+  mnn_sd <- sd(nndist(ppp_obj))
+  
+  return(list(mean = mnn, sd = mnn_sd))
+}
+
+# Calculate for each index
+iucn_mnn <- calculate_mnn(CAPTAIN2_IUCN_high)
+fuse_mnn <- calculate_mnn(CAPTAIN2_FUSE_high)
+edge2_mnn <- calculate_mnn(CAPTAIN2_EDGE2_high)
+
+# Print results
+cat("\nMean Nearest Neighbor Distance (units depend on your projection):\n")
+cat("IUCN:  Mean = ", round(iucn_mnn$mean, 2), ", SD = ", round(iucn_mnn$sd, 2), "\n", sep="")
+cat("FUSE:  Mean = ", round(fuse_mnn$mean, 2), ", SD = ", round(fuse_mnn$sd, 2), "\n", sep="")
+cat("EDGE2: Mean = ", round(edge2_mnn$mean, 2), ", SD = ", round(edge2_mnn$sd, 2), "\n", sep="")
+
+# Create summary data frame
+mnn_summary <- data.frame(
+  Index = c("IUCN", "FUSE", "EDGE2"),
+  N_cells = c(iucn_high_cells, fuse_high_cells, edge2_high_cells),
+  Percent = c(iucn_percent, fuse_percent, edge2_percent),
+  MNN_mean = c(iucn_mnn$mean, fuse_mnn$mean, edge2_mnn$mean),
+  MNN_sd = c(iucn_mnn$sd, fuse_mnn$sd, edge2_mnn$sd)
+)
+
+print(mnn_summary)
+```
+
+# Congruence maps
+
+```{r}
+# Method 1: If you have separate dataframes for each index
+# Assuming your data has columns: PUID, Priority, and geometry
+
+# Fxirst, identify high priority areas (>0.9) for each index
+high_priority_EDGE2 <- CAPTAIN2_EDGE2_sf[CAPTAIN2_EDGE2_sf$Priority > 0.9, ]
+high_priority_FUSE <- CAPTAIN2_FUSE_sf[CAPTAIN2_FUSE_sf$Priority > 0.9, ]
+high_priority_IUCN <- CAPTAIN2_IUCN_sf[CAPTAIN2_IUCN_sf$Priority > 0.9, ]
+
+# Find congruent areas (present in all three)
+# Method using PUID (assuming you have PUID column)
+congruent_PUIDs <- intersect(intersect(high_priority_EDGE2$PUID, 
+                                      high_priority_FUSE$PUID), 
+                            high_priority_IUCN$PUID)
+
+# Extract congruent areas
+congruent_areas <- CAPTAIN2_EDGE2_sf[CAPTAIN2_EDGE2_sf$PUID %in% congruent_PUIDs, ]
+
+# Print summary
+cat("High priority areas (>0.9):\n")
+cat("EDGE2:", nrow(high_priority_EDGE2), "areas\n")
+cat("FUSE:", nrow(high_priority_FUSE), "areas\n") 
+cat("IUCN:", nrow(high_priority_IUCN), "areas\n")
+cat("Congruent areas:", nrow(congruent_areas), "areas\n")
+cat("Percentage of overlap:", round(nrow(congruent_areas)/min(nrow(high_priority_EDGE2), 
+                                                            nrow(high_priority_FUSE), 
+                                                            nrow(high_priority_IUCN))*100, 2), "%\n")
+
+# Method 2: If you need to merge dataframes first
+# Create a combined dataframe with all three priority scores
+# First, extract just the data (without geometry) from the other sf objects
+FUSE_data <- st_drop_geometry(CAPTAIN2_FUSE_sf[, c("PUID", "Priority")])
+IUCN_data <- st_drop_geometry(CAPTAIN2_IUCN_sf[, c("PUID", "Priority")])
+
+# Merge with the EDGE2 sf object (keeping geometry)
+combined_priorities <- merge(CAPTAIN2_EDGE2_sf, FUSE_data, 
+                            by = "PUID", suffixes = c("_EDGE2", "_FUSE"))
+combined_priorities <- merge(combined_priorities, IUCN_data, 
+                            by = "PUID")
+names(combined_priorities)[names(combined_priorities) == "Priority"] <- "Priority_IUCN"
+
+# Identify congruent high priority areas
+congruent_areas_v2 <- combined_priorities[combined_priorities$Priority_EDGE2 > 0.9 & 
+                                         combined_priorities$Priority_FUSE > 0.9 & 
+                                         combined_priorities$Priority_IUCN > 0.9, ]
+
+# Create a map showing only congruent areas
+congruent_map <- ggplot() +
+  geom_sf(data = congruent_areas, aes(fill = "Congruent High Priority"), 
+          color = "red", size = 0.8, alpha = 0.8) +
+  geom_sf(data = world_projected_CAPTAIN2_EDGE2, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_CAPTAIN2_EDGE2, fill = NA, color = "black", size = 0.5) +
+  scale_fill_manual(values = c("Congruent high priority" = "red"),
+                    name = "Priority areas") +
+  labs(title = "Congruent high priority areas",
+       subtitle = "Areas with priority > 0.9 in IUCN, FUSE and EDGE2 dimensions",
+       x = NULL, y = NULL) +
+  my_theme_CAPTAIN2_EDGE2
+
+# Display the map
+print(congruent_map)
+
+ggsave(here::here("Outputs", "congruent_high_prioritiy_areas_09.png"), 
+       congruent_map, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+# Create detailed congruence categories
+# Define logical conditions for each index
+EDGE2_high <- combined_priorities$Priority_EDGE2 > 0.9
+FUSE_high <- combined_priorities$Priority_FUSE > 0.9
+IUCN_high <- combined_priorities$Priority_IUCN > 0.9
+
+# Create detailed congruence categories
+combined_priorities$congruence_category <- case_when(
+  EDGE2_high & FUSE_high & IUCN_high ~ "All three indices",
+  !EDGE2_high & FUSE_high & IUCN_high ~ "IUCN + FUSE",      # Changed from "FUSE + IUCN"
+  EDGE2_high & !FUSE_high & IUCN_high ~ "IUCN + EDGE2",     # Changed from "EDGE2 + IUCN"
+  EDGE2_high & FUSE_high & !IUCN_high ~ "FUSE + EDGE2",     # Changed from "EDGE2 + FUSE"
+  !EDGE2_high & !FUSE_high & IUCN_high ~ "IUCN only",
+  !EDGE2_high & FUSE_high & !IUCN_high ~ "FUSE only",
+  EDGE2_high & !FUSE_high & !IUCN_high ~ "EDGE2 only",
+  TRUE ~ "No high priority"
+)
+
+# Convert to factor with desired order
+combined_priorities$congruence_category <- factor(
+  combined_priorities$congruence_category,
+  levels = c("All three indices",
+             "IUCN + FUSE", "IUCN + EDGE2", "FUSE + EDGE2",  # Changed order
+             "IUCN only", "FUSE only", "EDGE2 only")
+)
+
+# Filter data to only include high priority areas
+high_priority_data <- combined_priorities[combined_priorities$congruence_category %in%
+                                          c("All three indices", 
+                                            "IUCN + FUSE", "IUCN + EDGE2", "FUSE + EDGE2",  # Changed names
+                                            "IUCN only", "FUSE only", "EDGE2 only"), ]
+
+# Debug: Check the data
+cat("Data check:\n")
+cat("Total high priority areas:", nrow(high_priority_data), "\n")
+print(table(high_priority_data$congruence_category))
+
+# Check if the factor levels are properly set
+cat("\nFactor levels:\n")
+print(levels(high_priority_data$congruence_category))
+
+# Check for any issues with the data
+cat("\nData structure check:\n")
+print(str(high_priority_data$congruence_category))
+
+# Test a simple plot first
+cat("\nTesting simple plot...\n")
+test_plot <- ggplot() +
+  geom_sf(data = high_priority_data, aes(fill = congruence_category)) +
+  scale_fill_manual(values = c("All three indices" = "#8B0000",
+                              "EDGE2 + FUSE" = "#FF4500",
+                              "EDGE2 + IUCN" = "#FF6347",
+                              "FUSE + IUCN" = "#FFA500",
+                              "EDGE2 only" = "#4169E1",
+                              "FUSE only" = "#32CD32",
+                              "IUCN only" = "#9370DB")) +
+  theme_void()
+
+# Try to print the simple test plot
+tryCatch({
+  print(test_plot)
+  cat("Simple plot works!\n")
+}, error = function(e) {
+  cat("Simple plot failed with error:", e$message, "\n")
+})
+
+# If simple plot fails, let's check the data more thoroughly
+if (nrow(high_priority_data) == 0) {
+  cat("No high priority data found! Checking original data...\n")
+  cat("EDGE2 > 0.9:", sum(combined_priorities$Priority_EDGE2 > 0.9, na.rm = TRUE), "\n")
+  cat("FUSE > 0.9:", sum(combined_priorities$Priority_FUSE > 0.9, na.rm = TRUE), "\n") 
+  cat("IUCN > 0.9:", sum(combined_priorities$Priority_IUCN > 0.9, na.rm = TRUE), "\n")
+}
+
+# Extract coordinates for the congruence plot
+if (nrow(high_priority_data) > 0) {
+  coords <- st_coordinates(st_centroid(high_priority_data))
+  plot_data <- data.frame(
+    x = coords[,1],
+    y = coords[,2], 
+    category = high_priority_data$congruence_category
+  )
+  
+  # Remove any rows with NA category
+  plot_data <- plot_data[!is.na(plot_data$category), ]
+  
+  cat("Creating enhanced congruence plot...\n")
+  cat("Plot data dimensions:", nrow(plot_data), "points\n")
+  
+  # Create the enhanced congruence plot
+  congruence_map <- ggplot(plot_data, aes(x = x, y = y, color = category)) +
+    geom_point(size = 1.2, alpha = 0.85, stroke = 0) +  # Larger points, no stroke to reduce overlap
+    scale_color_manual(
+      values = c("All three indices" = "#8B0000",      # Dark red
+                "EDGE2 + FUSE" = "#FF8C00",            # Dark orange  
+                "EDGE2 + IUCN" = "#DC143C",            # Crimson
+                "FUSE + IUCN" = "#FFD700",             # Gold
+                "EDGE2 only" = "#4169E1",              # Royal blue
+                "FUSE only" = "#32CD32",               # Lime green
+                "IUCN only" = "#9370DB"),              # Medium purple
+      name = "High Priority\nCongruence",
+      guide = guide_legend(
+        override.aes = list(size = 4, alpha = 1),  # Larger, more opaque legend points
+        title.position = "top",
+        title.hjust = 0.5,
+        ncol = 4  # Two columns for legend to save space
+      )) +
+    labs(
+      title = "Global Conservation Priority Congruence Analysis",
+      subtitle = "High priority areas (>0.9) showing agreement patterns across EDGE2, FUSE, and IUCN indices",
+      x = "Longitude", 
+      y = "Latitude",
+      caption = paste("Total high priority areas:", nrow(plot_data))
+    ) +
+    theme_minimal() +
+    theme(
+      # Plot aesthetics
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "#f8f9fa", color = NA),
+      panel.grid.major = element_line(color = "white", size = 0.5, linetype = "solid"),
+      panel.grid.minor = element_line(color = "white", size = 0.25, linetype = "solid"),
+      
+      # Text styling
+      plot.title = element_text(size = 16, hjust = 0.5, face = "bold", 
+                               margin = margin(b = 10)),
+      plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30",
+                                  margin = margin(b = 20)),
+      plot.caption = element_text(size = 10, color = "gray50", hjust = 1),
+      
+      # Axis styling
+      axis.title = element_text(size = 12, face = "bold"),
+      axis.text = element_text(size = 10, color = "gray30"),
+      axis.ticks = element_line(color = "gray50", size = 0.5),
+      
+      # Legend styling
+      legend.position = "bottom",
+      legend.background = element_rect(fill = "white", color = "gray80", size = 0.5),
+      legend.margin = margin(t = 15, r = 10, b = 10, l = 10),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10),
+      legend.key.size = unit(0.8, "cm"),
+      
+      # Panel border
+      panel.border = element_rect(color = "gray70", fill = NA, size = 0.5)
+    ) +
+    # Add coordinate system and aspect ratio
+    coord_fixed(ratio = 1.3) +  # Adjust ratio for better map appearance
+    # Add subtle borders around plot area
+    scale_x_continuous(expand = c(0.02, 0.02)) +
+    scale_y_continuous(expand = c(0.02, 0.02))
+  
+  # Print the enhanced plot
+  print(congruence_map)
+  cat("Enhanced congruence plot created successfully!\n")
+  
+  # Print summary by category
+  cat("\nBreakdown by congruence category:\n")
+  category_counts <- table(plot_data$category)
+  category_percentages <- round(prop.table(category_counts) * 100, 1)
+  
+  for(i in 1:length(category_counts)) {
+    cat(sprintf("%-20s: %4d points (%4.2f%%)\n", 
+                names(category_counts)[i], 
+                category_counts[i], 
+                category_percentages[i]))
+  }
+  
+} else {
+  cat("No valid high priority data to plot\n")
+}
+
+# Print summary of congruence patterns
+#cat("\nCongruence Pattern Summary:\n")
+#congruence_summary <- table(combined_priorities$congruence_category, useNA = "ifany")
+#print(congruence_summary)
+
+# Calculate percentages
+total_high_priority <- sum(congruence_summary[names(congruence_summary) != "No high priority"], na.rm = TRUE)
+congruence_percentages <- round(congruence_summary / total_high_priority * 100, 2)
+cat("\nPercentages of high priority areas:\n")
+print(congruence_percentages[names(congruence_percentages) != "No high priority"])
+
+# ms style map -----
+# Step 1: Check original data
+#print("=== STEP 1: CHECKING ORIGINAL DATA ===")
+#print(head(plot_data))
+#print(summary(plot_data[c("x", "y")]))
+#print(unique(plot_data$category))
+
+# Step 2: Transform to sf object
+congruence_sf <- st_as_sf(
+  plot_data, 
+  coords = c("x", "y"), 
+  crs = mcbryde_thomas_2  # Assuming WGS84
+)
+print(st_crs(congruence_sf))
+print(st_bbox(congruence_sf))
+
+# Step 3: Project to McBryde-Thomas 2
+congruence_sf <- st_transform(congruence_sf, crs = mcbryde_thomas_2)
+print(st_crs(congruence_sf))
+print(st_bbox(congruence_sf))
+
+# Step 4: Check world projection
+world_projected_congruence <- st_transform(world, crs = mcbryde_thomas_2)
+print(st_bbox(world_projected_congruence))
+
+# Step 5: Create globe border
+globe_bbox <- rbind(c(-180, -90), c(-180, 90), 
+                    c(180, 90), c(180, -90), c(-180, -90))
+globe_border_congruence <- st_polygon(list(globe_bbox)) %>%
+  st_sfc(crs = 4326) %>%
+  st_sf(data.frame(rgn = 'globe', geom = .)) %>%
+  smoothr::densify(max_distance = 0.5) %>%
+  st_transform(crs = mcbryde_thomas_2)
+print(st_bbox(globe_border_congruence))
+
+# Step 6: Check intersection
+points_in_globe <- st_intersects(congruence_sf, globe_border_congruence, sparse = FALSE)
+
+# Step 7: Extract coordinates for verification
+coords <- st_coordinates(congruence_sf)
+
+
+# Step 8: Create theme
+my_theme_congruence <- theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.margin = margin(t = 20, r = 0, b = 0, l = 0),
+    legend.title = element_text(margin = margin(b = 10)),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),      # Add this line
+    axis.ticks = element_blank()      # Add this line
+  )
+
+# Step 9: Create plot with debugging
+congruence_map <- ggplot() +
+  geom_sf(data = congruence_sf, aes(color = category), size = 1.2, alpha = 0.85) +
+  geom_sf(data = world_projected_congruence, fill = "lightgrey", color = "lightgrey", size = 0.1) +
+  geom_sf(data = globe_border_congruence, fill = NA, color = "lightgrey", size = 0.5) +
+  scale_color_manual(
+  values = c("All three indices" = "#8B0000",
+            "IUCN + FUSE" = "#FFD700",           # Changed from "FUSE + IUCN"
+            "IUCN + EDGE2" = "#DC143C",          # Changed from "EDGE2 + IUCN"
+            "FUSE + EDGE2" = "#FF8C00",          # Changed from "EDGE2 + FUSE"
+            "IUCN only" = "#9370DB",
+            "FUSE only" = "#32CD32",
+            "EDGE2 only" = "#4169E1"),
+  breaks = c("All three indices",
+             "IUCN + FUSE", 
+             "IUCN + EDGE2", 
+             "FUSE + EDGE2",
+             "IUCN only", 
+             "FUSE only", 
+             "EDGE2 only"),              # Finally: FUSE + EDGE2
+    name = "High priority congruence",
+    guide = guide_legend(
+      override.aes = list(size = 4, alpha = 1),
+      title.position = "top", 
+      title.hjust = 0.5,
+      ncol = 4
+    )) +
+  labs(
+    title = "Global conservation priority congruence analysis",
+    subtitle = "High priority areas (>0.9) showing agreement patterns across IUCN, FUSE and EDGE2 prioritisations",
+    x = NULL, 
+    y = NULL
+  ) +
+  my_theme_congruence
+
+ggsave(here::here("outputs", "congruent_high_prioritiy_areas_09_all_indices.png"), 
+       congruence_map, 
+       width = 10, height = 8, dpi = 300, bg = "white")
+
+
+# Display both plots
+print(congruence_map)
+```
+
+# Congruence tests 
+
+```{r}
+# Statistical congruence analysis following the methods section
+# First, extract priority values for the comparison
+priority_threshold <- 0.9
+
+# Create binary matrices for high-priority areas (>0.9)
+fuse_high <- CAPTAIN2_FUSE_data_nonzero$Priority > priority_threshold
+edge2_high <- CAPTAIN2_EDGE2_data_nonzero$Priority > priority_threshold
+iucn_high <- CAPTAIN2_IUCN_data_nonzero$Priority > priority_threshold
+
+# Calculate observed overlaps
+observed_fuse_edge2 <- sum(fuse_high & edge2_high)
+observed_fuse_iucn <- sum(fuse_high & iucn_high)
+observed_edge2_iucn <- sum(edge2_high & iucn_high)
+observed_all_three <- sum(fuse_high & edge2_high & iucn_high)
+
+# Calculate minimum high-priority cells for each comparison
+min_fuse_edge2 <- min(sum(fuse_high), sum(edge2_high))
+min_fuse_iucn <- min(sum(fuse_high), sum(iucn_high))
+min_edge2_iucn <- min(sum(edge2_high), sum(iucn_high))
+
+# Calculate percentage overlaps (conservative estimate)
+overlap_fuse_edge2 <- (observed_fuse_edge2 / min_fuse_edge2) * 100
+overlap_fuse_iucn <- (observed_fuse_iucn / min_fuse_iucn) * 100
+overlap_edge2_iucn <- (observed_edge2_iucn / min_edge2_iucn) * 100
+
+# Randomization test function
+randomization_test <- function(index1_high, index2_high, n_permutations = 999) {
+  observed_overlap <- sum(index1_high & index2_high)
+  min_cells <- min(sum(index1_high), sum(index2_high))
+  observed_percentage <- (observed_overlap / min_cells) * 100
+  
+  # Generate random overlaps
+  random_overlaps <- replicate(n_permutations, {
+    # Randomly shuffle the spatial distribution of index1
+    shuffled_index1 <- sample(index1_high)
+    random_overlap <- sum(shuffled_index1 & index2_high)
+    (random_overlap / min_cells) * 100
+  })
+  
+  # Calculate p-value
+  if (observed_percentage > mean(random_overlaps)) {
+    p_value <- sum(random_overlaps >= observed_percentage) / n_permutations
+  } else {
+    p_value <- sum(random_overlaps <= observed_percentage) / n_permutations
+  }
+  
+  return(list(
+    observed_percentage = observed_percentage,
+    expected_percentage = mean(random_overlaps),
+    p_value = p_value,
+    random_overlaps = random_overlaps
+  ))
+}
+
+# Perform randomization tests
+print("=== STATISTICAL CONGRUENCE ANALYSIS ===")
+cat("Threshold for high-priority areas:", priority_threshold, "\n\n")
+
+# FUSE vs EDGE2
+test_fuse_edge2 <- randomization_test(fuse_high, edge2_high)
+
+# FUSE vs IUCN
+test_fuse_iucn <- randomization_test(fuse_high, iucn_high)
+
+# EDGE2 vs IUCN
+test_edge2_iucn <- randomization_test(edge2_high, iucn_high)
+
+# Create a summary table
+congruence_results <- data.frame(
+  Comparison = c("FUSE vs EDGE2", "FUSE vs IUCN", "EDGE2 vs IUCN"),
+  Observed_Overlap_Percent = c(test_fuse_edge2$observed_percentage,
+                               test_fuse_iucn$observed_percentage,
+                               test_edge2_iucn$observed_percentage),
+  Expected_Overlap_Percent = c(test_fuse_edge2$expected_percentage,
+                               test_fuse_iucn$expected_percentage,
+                               test_edge2_iucn$expected_percentage),
+  P_Value = c(test_fuse_edge2$p_value,
+              test_fuse_iucn$p_value,
+              test_edge2_iucn$p_value),
+  Significance = c(
+    ifelse(test_fuse_edge2$p_value < 0.001, "***",
+           ifelse(test_fuse_edge2$p_value < 0.01, "**",
+                  ifelse(test_fuse_edge2$p_value < 0.05, "*", "ns"))),
+    ifelse(test_fuse_iucn$p_value < 0.001, "***",
+           ifelse(test_fuse_iucn$p_value < 0.01, "**",
+                  ifelse(test_fuse_iucn$p_value < 0.05, "*", "ns"))),
+    ifelse(test_edge2_iucn$p_value < 0.001, "***",
+           ifelse(test_edge2_iucn$p_value < 0.01, "**",
+                  ifelse(test_edge2_iucn$p_value < 0.05, "*", "ns")))
+  )
+)
+
+print(congruence_results)
+```
+
+# Relationship with fishing effort : bivariate maps  
+
+```{r}
+# Load your CAPTAIN data
+IUCN_data <- CAPTAIN2_IUCN_data_nonzero  # Assuming this exists from your previous code
+FUSE_data <- CAPTAIN2_FUSE_data_nonzero  # Assuming this exists from your previous code
+EDGE2_data <- CAPTAIN2_EDGE2_data_nonzero # Assuming this exists from your previous code
+
+# Process and prepare the data function
+process_bivariate_data <- function(priority_data, fishing_data, min_priority = 0) {
+  # Filter for cells with priority > min_priority
+  priority_data_filtered <- priority_data %>%
+    filter(Priority > min_priority)
+  
+  # Prepare fishing data
+  fishing_data <- fishing_data %>%
+    rename(Longitude = lon_05deg, Latitude = lat_05deg, FishingHours = predicted_fishing_hours)
+  
+  # Join datasets
+  combined_data <- priority_data_filtered %>%
+    left_join(fishing_data, by = c("Longitude", "Latitude"))
+  
+  # Handle NAs in fishing hours (replace with 0)
+  combined_data$FishingHours[is.na(combined_data$FishingHours)] <- 0
+  
+  # Normalize priorities to 0-1 range and log transform fishing hours
+  combined_data <- combined_data %>%
+    mutate(
+      Priority_Norm = Priority, # Assuming already in 0-1 range
+      # Log transform fishing hours to better handle skewed distribution
+      FishingHours_Log = log1p(FishingHours),
+      # Normalize log fishing hours
+      FishingHours_Norm = (FishingHours_Log - min(FishingHours_Log, na.rm = TRUE)) /
+                         (max(FishingHours_Log, na.rm = TRUE) - min(FishingHours_Log, na.rm = TRUE))
+    )
+  
+  # Set projection
+  mcbryde_thomas_2 <- "+proj=mbt_s"
+  
+  # Transform to sf object
+  data_sf <- st_as_sf(combined_data, coords = c("Longitude", "Latitude"), crs = 4326) %>%
+    st_transform(crs = mcbryde_thomas_2)
+  
+  return(data_sf)
+}
+
+# Process the three datasets with fishing data (only cells with Priority > 0)
+iucn_fishing_sf <- process_bivariate_data(IUCN_data, aggregated_data, min_priority = 0)
+fuse_fishing_sf <- process_bivariate_data(FUSE_data, aggregated_data, min_priority = 0)
+edge2_fishing_sf <- process_bivariate_data(EDGE2_data, aggregated_data, min_priority = 0)
+
+# Create color palette - using the PurpleOr scheme
+create_bivariate_palette <- function() {
+  map_pal_raw <- bi_pal(pal = 'PurpleOr', dim = 4, preview = FALSE)
+  map_pal_mtx <- matrix(map_pal_raw, nrow = 4, ncol = 4)
+  map_pal_mtx[3, ] <- colorspace::lighten(map_pal_mtx[3, ], .1)
+  map_pal_mtx[2, ] <- colorspace::lighten(map_pal_mtx[2, ], .2)
+  map_pal_mtx[1, ] <- colorspace::lighten(map_pal_mtx[1, ], .3)
+  map_pal_mtx[ , 3] <- colorspace::lighten(map_pal_mtx[ , 3], .1)
+  map_pal_mtx[ , 2] <- colorspace::lighten(map_pal_mtx[ , 2], .2)
+  map_pal_mtx[ , 1] <- colorspace::lighten(map_pal_mtx[ , 1], .3)
+  map_pal_mtx[1, 1] <- '#ffffee'
+  map_pal <- as.vector(map_pal_mtx) %>% setNames(names(map_pal_raw))
+  return(map_pal)
+}
+
+map_pal <- create_bivariate_palette()
+
+# Color mapping function
+get_color <- function(priority, fishing) {
+  priority_class <- cut(priority, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  fishing_class <- cut(fishing, breaks = c(-Inf, 0.25, 0.5, 0.75, Inf), labels = 1:4)
+  return(map_pal[(as.numeric(fishing_class)-1)*4 + as.numeric(priority_class)])
+}
+
+# Apply colors to the datasets
+iucn_fishing_sf$bivariate_color <- mapply(get_color,
+                                          iucn_fishing_sf$Priority_Norm,
+                                          iucn_fishing_sf$FishingHours_Norm)
+
+fuse_fishing_sf$bivariate_color <- mapply(get_color,
+                                          fuse_fishing_sf$Priority_Norm,
+                                          fuse_fishing_sf$FishingHours_Norm)
+
+edge2_fishing_sf$bivariate_color <- mapply(get_color,
+                                          edge2_fishing_sf$Priority_Norm,
+                                          edge2_fishing_sf$FishingHours_Norm)
+
+# Get world map and project
+world <- ne_countries(scale = "medium", returnclass = "sf")
+mcbryde_thomas_2 <- "+proj=mbt_s"
+world_projected <- st_transform(world, crs = mcbryde_thomas_2)
+
+# Create globe border
+lon_points <- rep(c(-180, 180), each = 100)
+lat_points <- c(seq(-90, 90, length.out = 100), seq(90, -90, length.out = 100))
+globe_outline <- data.frame(lon = lon_points, lat = lat_points) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_combine() %>%
+  st_cast("POLYGON") %>%
+  st_transform(crs = mcbryde_thomas_2)
+
+# Function to create individual bivariate maps with labels and titles
+create_bivariate_map <- function(data_sf, label, title) {
+  ggplot() +
+    geom_sf(data = data_sf, aes(color = bivariate_color), size = 0.1, alpha = 1) +
+    geom_sf(data = world_projected, fill = "lightgray", color = "lightgray") +
+    geom_sf(data = globe_outline, fill = NA, color = "grey70", size = 0.5) +
+    scale_color_identity() +
+    coord_sf() +
+    theme_minimal() +
+    labs(x = NULL, y = NULL, title = title) +  # Added title
+    theme(panel.grid = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(size = 14, face = "bold", hjust = 0.5),  # Title styling
+          plot.margin = margin(5, 5, 5, 5, "mm")) +
+    # Add smaller label in top-left corner
+    annotate("text", x = -Inf, y = Inf, label = label,
+             hjust = -0.2, vjust = 1.2, size = 4, fontface = "bold")  # Reduced from 8 to 4
+}
+
+# Create the three maps with labels and titles
+iucn_plot <- create_bivariate_map(iucn_fishing_sf, "(A)", "IUCN")
+fuse_plot <- create_bivariate_map(fuse_fishing_sf, "(B)", "FUSE")  
+edge2_plot <- create_bivariate_map(edge2_fishing_sf, "(C)", "EDGE2")
+
+# Create a larger legend for better visibility
+larger_legend <- bi_legend(pal = map_pal, dim = 4,
+                          xlab = 'Conservation\npriority',
+                          ylab = 'Fishing\neffort',
+                          size = 4) +  # Increased from 3 to 4 for bigger legend
+  theme(
+    axis.title = element_text(size = 10, face = "bold"),  # Reduced from 12 to 10
+    axis.text = element_blank(),
+    legend.text = element_text(size = 8),  # Reduced from 10 to 8
+    legend.title = element_text(size = 10, face = "bold"),  # Reduced from 12 to 10
+    plot.margin = margin(10, 10, 10, 10, "mm")
+  )
+
+# Create layout matrix: 3 rows, 2 columns
+# Column 1: maps (wider)
+# Column 2: empty, legend (middle row), empty
+layout_matrix <- rbind(
+  c(1, NA),      # Row 1: Map A, empty
+  c(2, 4),       # Row 2: Map B, legend
+  c(3, NA)       # Row 3: Map C, empty
+)
+
+# Arrange all plots together
+combined_plot <- grid.arrange(
+  iucn_plot,
+  fuse_plot,
+  edge2_plot,
+  larger_legend,
+  layout_matrix = layout_matrix,
+  heights = c(1, 1, 1),      # Equal height for all three map rows
+  widths = c(3, 1)           # Maps take 3/4 width, legend takes 1/4
+)
+
+# Save with dimensions better suited for A4 portrait
+ggsave(here::here("Outputs", "Fig.4_All_indices_fishing_bivariate_maps_vertical.png"),
+       combined_plot, width = 8.3, height = 11, dpi = 300, bg = "white")  # A4 portrait dimensions
 ```
