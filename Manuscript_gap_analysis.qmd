@@ -319,16 +319,31 @@ realms <- meow_ecos %>%
 # Spatial join with realms
 grid_realms <- st_join(grid_sf, realms, largest = TRUE)
 
-# Calculate mean coverage by realm
+# Alternative approach - calculate SD in a separate step
 realm_stats <- grid_realms %>%
   st_drop_geometry() %>%
+  filter(!is.na(REALM)) %>%
   group_by(REALM) %>%
   summarize(
     mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
     median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+# Calculate SD separately and join
+realm_sd <- grid_realms %>%
+  st_drop_geometry() %>%
+  filter(!is.na(REALM)) %>%
+  group_by(REALM) %>%
+  summarize(
     sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
-    n_cells = n()
-  ) %>%
+    .groups = "drop"
+  )
+
+# Join them together
+realm_stats <- realm_stats %>%
+  left_join(realm_sd, by = "REALM") %>%
   arrange(desc(mean_NT_coverage))
 
 #======================
@@ -337,18 +352,33 @@ realm_stats <- grid_realms %>%
 # Spatial join with ecoregions
 grid_ecoregions <- st_join(grid_sf, meow_ecos, largest = TRUE)
 
-# Calculate mean coverage by ecoregion
+# Calculate main stats
 ecoregion_stats <- grid_ecoregions %>%
   st_drop_geometry() %>%
+  filter(!is.na(ECOREGION)) %>%
   group_by(ECOREGION) %>%
   summarize(
     PROVINCE = first(PROVINCE),
     REALM = first(REALM),
     mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
     median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+# Calculate SD separately
+ecoregion_sd <- grid_ecoregions %>%
+  st_drop_geometry() %>%
+  filter(!is.na(ECOREGION)) %>%
+  group_by(ECOREGION) %>%
+  summarize(
     sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
-    n_cells = n()
-  ) %>%
+    .groups = "drop"
+  )
+
+# Join and arrange
+ecoregion_stats <- ecoregion_stats %>%
+  left_join(ecoregion_sd, by = "ECOREGION") %>%
   arrange(desc(mean_NT_coverage))
 
 #======================
@@ -360,18 +390,33 @@ eez_valid <- st_make_valid(eez)
 # Spatial join with EEZ
 grid_eez <- st_join(grid_sf, eez_valid %>% select(TERRITORY1, SOVEREIGN1, ISO_TER1, MRGID_TER1), largest = TRUE)
 
-# Calculate mean coverage by EEZ
+# Calculate main stats
 eez_stats <- grid_eez %>%
   st_drop_geometry() %>%
+  filter(!is.na(TERRITORY1) & !is.na(SOVEREIGN1)) %>%
   group_by(TERRITORY1, SOVEREIGN1) %>%
   summarize(
     ISO_TER1 = first(ISO_TER1),
     MRGID_TER1 = first(MRGID_TER1),
     mean_NT_coverage = mean(mean_NT_coverage, na.rm = TRUE),
     median_NT_coverage = median(mean_NT_coverage, na.rm = TRUE),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+# Calculate SD separately
+eez_sd <- grid_eez %>%
+  st_drop_geometry() %>%
+  filter(!is.na(TERRITORY1) & !is.na(SOVEREIGN1)) %>%
+  group_by(TERRITORY1, SOVEREIGN1) %>%
+  summarize(
     sd_NT_coverage = sd(mean_NT_coverage, na.rm = TRUE),
-    n_cells = n()
-  ) %>%
+    .groups = "drop"
+  )
+
+# Join and arrange
+eez_stats <- eez_stats %>%
+  left_join(eez_sd, by = c("TERRITORY1", "SOVEREIGN1")) %>%
   arrange(desc(mean_NT_coverage))
 
 # Print summary tables
@@ -383,12 +428,6 @@ print(head(ecoregion_stats, 10))
 
 cat("\nTop 10 EEZs by Mean No-Take MPA Coverage:\n")
 print(head(eez_stats, 10))
-
-st_crs(grid_sf)
-st_crs(meow_ecos)
-st_crs(eez)
-
-grid_realms %>% count(REALM) %>% arrange(n)
 
 #======================
 # Create visualizations
@@ -1291,6 +1330,17 @@ results_IUCN <- results_IUCN %>%
     TRUE ~ "Unknown"
   ))
 
+# Define IUCN colors and order
+iucn_colors <- c(
+  "CR" = "#D81E05",
+  "EN" = "#FC7F3F",
+  "VU" = "#FEC748",
+  "NT" = "#58AFFF",
+  "LC" = "#38AB38"
+)
+
+iucn_order <- c("LC", "NT", "VU", "EN", "CR")
+
 # Filter out the "Unknown" category
 results_IUCN_filtered <- results_IUCN %>%
   filter(IUCN_status != "Unknown")
@@ -1347,17 +1397,6 @@ print(paste("Average decrease per threat category:", round(avg_decrease_nt, 2), 
 #======================
 # Ridge Plot with Points - No-take MPAs
 #======================
-
-# Define IUCN colors and order
-iucn_colors <- c(
-  "CR" = "#D81E05",
-  "EN" = "#FC7F3F",
-  "VU" = "#FEC748",
-  "NT" = "#58AFFF",
-  "LC" = "#38AB38"
-)
-
-iucn_order <- c("LC", "NT", "VU", "EN", "CR")
 
 # Prepare no-take MPA data for plotting
 notake_mpa_iucn <- results_IUCN_filtered %>%
