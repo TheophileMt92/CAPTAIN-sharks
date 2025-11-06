@@ -46,6 +46,7 @@ library(ggridges)
 library(betareg)
 library(margins)
 library(ggpubr)
+library(knitr)
 ```
 
 # Load the data
@@ -58,7 +59,8 @@ load(here::here("Data", "GAP analyses", "puvsp_marine.Rdata"))
 mpa_NT <- raster::raster(here::here("Data", "GAP analyses", "mpa_NT_binary.tif"))
 
 # High seas shapefile 
-High_seas = st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"))
+# High seas shapefile 
+High_seas = st_read(here::here("Data", "World_High_Seas_v2_20241010", "High_Seas_v2.shp"), quiet = TRUE)
 
 # Ecoregion shapefile
 meow_ecos <- st_read(here("Data", "Shapefiles", "meow_ecos", "meow_ecos.shp"), quiet = TRUE)
@@ -126,9 +128,20 @@ results <- results[order(-results$percentage_in_NT_MPA), ]
 #print(head(results, 10))
 
 # Summary statistics
-cat("\nSummary Statistics for No-Take MPAs:\n")
-print(summary(results$percentage_in_NT_MPA))
-print(sd(results$percentage_in_NT_MPA))
+summary_stats <- data.frame(
+  Statistic = c("Min", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max", "SD"),
+  Value = c(
+    summary(results$percentage_in_NT_MPA)[1],
+    summary(results$percentage_in_NT_MPA)[2],
+    summary(results$percentage_in_NT_MPA)[3],
+    summary(results$percentage_in_NT_MPA)[4],
+    summary(results$percentage_in_NT_MPA)[5],
+    summary(results$percentage_in_NT_MPA)[6],
+    sd(results$percentage_in_NT_MPA)
+  )
+)
+
+kable(summary_stats, caption = "Summary statistics for no-take MPA coverage", digits = 2)
 
 # Save results to CSV
 write.csv(results, here::here("Data","species_mpa_coverage_NT.csv"), row.names = FALSE)
@@ -172,14 +185,6 @@ for (sp_name in names(species_NT_percentages)) {
 grid_data <- grid_data %>%
   mutate(mean_NT_coverage = ifelse(species_count > 0, sum_percentages / species_count, NA)) %>%
   filter(!is.na(mean_NT_coverage))
-
-# Report global statistics
-cat("Global mean percentage of species ranges in No-Take MPAs:", 
-    mean(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Global median percentage of species ranges in No-Take MPAs:", 
-    median(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Standard deviation:", 
-    sd(grid_data$mean_NT_coverage, na.rm = TRUE), "\n")
 
 # Exclude high seas grid cells ---- 
 
@@ -275,18 +280,21 @@ print(nt_map_projected)
 # Save the projected map (continental waters only)
 ggsave(here::here("Outputs","NT_MPA_coverage_continental.png"), nt_map_projected, width = 10, height = 7, dpi = 300)
 
-# Report continental waters statistics
-cat("\nContinental Waters Statistics:\n")
-cat("Mean percentage of species ranges in No-Take MPAs:", 
-    mean(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Max percentage of species ranges in No-Take MPAs:", 
-    max(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Min percentage of species ranges in No-Take MPAs:", 
-    min(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Median percentage of species ranges in No-Take MPAs:", 
-    median(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
-cat("Standard deviation:", 
-    sd(grid_data_continental$mean_NT_coverage, na.rm = TRUE), "\n")
+# Compute statistics
+continental_stats <- data.frame(
+  Statistic = c("Mean", "Max", "Min", "Median", "Standard Deviation"),
+  Value = c(
+    mean(grid_data_continental$mean_NT_coverage, na.rm = TRUE),
+    max(grid_data_continental$mean_NT_coverage, na.rm = TRUE),
+    min(grid_data_continental$mean_NT_coverage, na.rm = TRUE),
+    median(grid_data_continental$mean_NT_coverage, na.rm = TRUE),
+    sd(grid_data_continental$mean_NT_coverage, na.rm = TRUE)
+  )
+)
+
+# Display as a formatted table
+kable(continental_stats, caption = "Continental waters statistics", digits = 2)
+
 ```
 
 # Breakdown by realm, ecoregion and EEZ
@@ -295,6 +303,9 @@ cat("Standard deviation:",
 # Convert grid_data_continental to sf for spatial operations
 grid_sf <- grid_data_continental %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+grid_sf <- st_transform(grid_sf, st_crs(meow_ecos))
+eez <- st_transform(eez, st_crs(grid_sf))
 
 #=====================
 # Calculate by Realm
@@ -306,7 +317,7 @@ realms <- meow_ecos %>%
   ungroup()
 
 # Spatial join with realms
-grid_realms <- st_join(grid_sf, realms)
+grid_realms <- st_join(grid_sf, realms, largest = TRUE)
 
 # Calculate mean coverage by realm
 realm_stats <- grid_realms %>%
@@ -324,7 +335,7 @@ realm_stats <- grid_realms %>%
 # Calculate by Ecoregion
 #======================
 # Spatial join with ecoregions
-grid_ecoregions <- st_join(grid_sf, meow_ecos)
+grid_ecoregions <- st_join(grid_sf, meow_ecos, largest = TRUE)
 
 # Calculate mean coverage by ecoregion
 ecoregion_stats <- grid_ecoregions %>%
@@ -347,7 +358,7 @@ ecoregion_stats <- grid_ecoregions %>%
 eez_valid <- st_make_valid(eez)
 
 # Spatial join with EEZ
-grid_eez <- st_join(grid_sf, eez_valid %>% dplyr::select(TERRITORY1, SOVEREIGN1, ISO_TER1, MRGID_TER1))
+grid_eez <- st_join(grid_sf, eez_valid %>% select(TERRITORY1, SOVEREIGN1, ISO_TER1, MRGID_TER1), largest = TRUE)
 
 # Calculate mean coverage by EEZ
 eez_stats <- grid_eez %>%
@@ -372,6 +383,12 @@ print(head(ecoregion_stats, 10))
 
 cat("\nTop 10 EEZs by Mean No-Take MPA Coverage:\n")
 print(head(eez_stats, 10))
+
+st_crs(grid_sf)
+st_crs(meow_ecos)
+st_crs(eez)
+
+grid_realms %>% count(REALM) %>% arrange(n)
 
 #======================
 # Create visualizations
@@ -657,7 +674,7 @@ if (exists("random_results_NT")) {
 
 ## Compare results between the MPA network and the Null model of MPA placement
 
-```{r}
+```{r fig.height=2.5}
 # Load actual MPA coverage data
 actual_coverage <- read.csv(here::here("Data", "species_mpa_coverage_NT.csv"))
 colnames(actual_coverage)[2] <- c("NT")
@@ -818,10 +835,6 @@ under_represented_NT <- comparison_NT %>%
 # Count the number of under-represented species
 n_under_NT <- nrow(under_represented_NT)
 
-# Print the counts and percentages
-cat(paste("Under-represented species in No-take MPAs:", n_under_NT,
-          "(", round(n_under_NT/nrow(comparison_NT)*100, 1), "% of all species)\n"))
-
 # Save the list of under-represented species to CSV file
 write.csv(under_represented_NT, 
           here::here("Outputs", "under_represented_species_NT_MPAs.csv"), 
@@ -871,10 +884,6 @@ under_rep_NT_species <- under_represented_NT %>% dplyr::select(species)
 # Use the prepare_iucn_data function to get IUCN statuses for each group separately
 all_species_iucn <- prepare_iucn_data(all_species, "species")
 under_rep_NT_iucn <- prepare_iucn_data(under_rep_NT_species, "species")
-
-# Print count of species with IUCN data in each group
-cat("Total species with IUCN data:", nrow(all_species_iucn), "\n")
-cat("Under-represented No-take MPAs species with IUCN data:", nrow(under_rep_NT_iucn), "\n")
 
 # Function to summarize IUCN status distribution
 summarize_iucn <- function(data, title) {
@@ -1024,9 +1033,9 @@ template_raster <- rast(ext(High_seas), resolution = 0.5)
 highseas_raster <- rasterize(vect(High_seas), template_raster, field = 1, background = 0)
 
 # Plot to verify
-plot(highseas_raster,
-     main = "High Seas (1) vs Continental Waters (0)",
-     col = c("lightblue", "darkblue"))
+#plot(highseas_raster,
+#     main = "High Seas (1) vs Continental Waters (0)",
+#     col = c("lightblue", "darkblue"))
 
 # For No-take MPAs
 difference_sp <- comparison_NT[, c(1, 3, 6)]
@@ -1055,7 +1064,7 @@ mean_ses_per_cell_clean <- combined_data_clean %>%
   summarise(mean_SES = mean(SES_clean, na.rm = TRUE), .groups = "drop")
 
 # Check the cleaned results
-summary(mean_ses_per_cell_clean$mean_SES)
+#summary(mean_ses_per_cell_clean$mean_SES)
 
 # Convert to terra SpatVector for extraction
 ses_points_NT <- vect(as.data.frame(mean_ses_per_cell_clean),
@@ -1115,6 +1124,9 @@ continental_plot_NT <- ggplot() +
   scale_color_gradient2(
     low = "#b2182b", mid = "#f0f0f0", high = "#2166ac", 
     midpoint = 0,
+# Note: The color scale is manually limited to [-3, 3] to improve visual contrast.
+# Values outside this range are squished to the nearest limit (using oob = scales::squish),
+# which prevents extreme SES values (e.g., -10 or +5) from dominating the color scale.
     limits = c(-3, 3),
     oob = scales::squish,
     name = "Mean SES",
@@ -1204,6 +1216,7 @@ ses_eco_map <- ggplot() +
   )
 
 # Print and save the map
+cat("Mean SES per ecoregion:\n")
 print(ses_eco_map)
 ggsave(here("Outputs", "ecoregion_SES_map_NT_clean.png"), 
        ses_eco_map, width = 12, height = 8, dpi = 300)
@@ -1243,10 +1256,12 @@ bottom_ses_plot <- ggplot(tail(ecoregion_ses_stats, 20),
   )
 
 # Print and save plots
+cat("Top 20 Ecoregions by Mean SES:\n")
 print(top_ses_plot)
 ggsave(here("Outputs", "top_ecoregions_SES_NT_clean.png"), 
        top_ses_plot, width = 10, height = 8, dpi = 300)
 
+cat("Bottom 20 Ecoregions by Mean SES:\n")
 print(bottom_ses_plot)
 ggsave(here("Outputs", "bottom_ecoregions_SES_NT_clean.png"), 
        bottom_ses_plot, width = 10, height = 8, dpi = 300)
@@ -1280,6 +1295,20 @@ results_IUCN <- results_IUCN %>%
 results_IUCN_filtered <- results_IUCN %>%
   filter(IUCN_status != "Unknown")
 
+# Raw summary statistics for no-take MPAs
+summary_stats_nt <- results_IUCN_filtered %>%
+  group_by(IUCN_status) %>%
+  summarise(
+    count = n(),
+    mean = mean(NT, na.rm = TRUE),
+    median = median(NT, na.rm = TRUE),
+    sd = sd(NT, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(IUCN_status, levels = iucn_order))
+
+print("Summary statistics for No-take MPAs:")
+print(summary_stats_nt)
 #======================
 # Beta Regression for No-take MPAs
 #======================
@@ -1390,21 +1419,6 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
-
-# Summary statistics for no-take MPAs
-summary_stats_nt <- results_IUCN_filtered %>%
-  group_by(IUCN_status) %>%
-  summarise(
-    count = n(),
-    mean = mean(NT, na.rm = TRUE),
-    median = median(NT, na.rm = TRUE),
-    sd = sd(NT, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  arrange(factor(IUCN_status, levels = iucn_order))
-
-print("Summary statistics for No-take MPAs:")
-print(summary_stats_nt)
 ```
 
 # Grid of Fig. 1
@@ -1437,4 +1451,7 @@ ggsave(
   dpi = 300, # Resolution (300 DPI for high quality)
   bg = "white", 
 )
+
+# Display the saved image in the Quarto document
+knitr::include_graphics(here::here("Outputs", "Fig_1_combined_points_3.png"))
 ```
